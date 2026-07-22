@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { initialComments, initialDocuments, initialFolders, initialMembers, initialTodos, teamNames as defaultTeamNames } from './data'
 import { DocumentTable } from './components/DocumentTable'
+import { MemberPicker, type CandidateRole, type MemberCandidate } from './components/MemberPicker'
 import { Modal } from './components/Modal'
 import { Sidebar, TopNavigation } from './components/Navigation'
 import { ReadingWorkspace } from './components/ReadingWorkspace'
@@ -23,20 +24,21 @@ import './reading.css'
 
 const nextId = (items: Array<{ id: number }>) => Math.max(0, ...items.map((item) => item.id)) + 1
 
-const memberCandidates = [
-  { id: 'member-zhang-1', name: '张三', email: 'zhangsan@example.com', date: '2025-12-05', color: '#5b8ff9' },
-  { id: 'member-li-1', name: '李四', email: 'lisi@example.com', date: '2025-12-05', color: '#7c3aed' },
-  { id: 'member-wang-1', name: '王五', email: 'wangwu@example.com', date: '2025-12-02', color: '#0891b2' },
-  { id: 'member-zhao-1', name: '赵六', email: 'zhaoliu@example.com', date: '2025-12-02', color: '#0ea5e9' },
-  { id: 'member-sun-1', name: '孙七', email: 'sunqi@example.com', date: '2025-12-01', color: '#f97316' },
-  { id: 'member-wang-2', name: '王五', email: 'wangwu@example.com', date: '2025-12-01', color: '#14b8a6' },
-  { id: 'member-zhang-2', name: '张三', email: 'zhangsan@example.com', date: '2025-11-28', color: '#ec4899' },
-  { id: 'member-li-2', name: '李四', email: 'lisi@example.com', date: '2025-11-26', color: '#8b5cf6' },
-  { id: 'member-zhao-2', name: '赵六', email: 'zhaoliu@example.com', date: '2025-11-22', color: '#06b6d4' },
-  { id: 'member-sun-2', name: '孙七', email: 'sunqi@example.com', date: '2025-11-20', color: '#84cc16' },
+const memberCandidates: MemberCandidate[] = [
+  { id: 'member-zhang-1', name: '张三', email: 'zhangsan@example.com', date: '2025-12-05', color: '#3e84f5' },
+  { id: 'member-li-1', name: '李四', email: 'lisi@example.com', date: '2025-12-05', color: '#17b981' },
+  { id: 'member-wang-1', name: '王五', email: 'wangwu@example.com', date: '2025-12-02', color: '#8b5ef5' },
+  { id: 'member-zhao-1', name: '赵六', email: 'zhaoliu@example.com', date: '2025-12-02', color: '#f49e14' },
+  { id: 'member-sun-1', name: '孙七', email: 'sunqi@example.com', date: '2025-12-01', color: '#ee4546' },
+  { id: 'member-zhang-2', name: '张三', email: 'zhangsan@example.com', date: '2025-11-28', color: '#3e84f5' },
+  { id: 'member-li-2', name: '李四', email: 'lisi@example.com', date: '2025-11-26', color: '#17b981' },
+  { id: 'member-wang-2', name: '王五', email: 'wangwu@example.com', date: '2025-12-01', color: '#8b5ef5' },
+  { id: 'member-zhao-2', name: '赵六', email: 'zhaoliu@example.com', date: '2025-11-22', color: '#f49e14' },
+  { id: 'member-sun-2', name: '孙七', email: 'sunqi@example.com', date: '2025-11-20', color: '#ee4546' },
 ]
 
-const defaultInviteSelection = ['member-zhang-1', 'member-li-1', 'member-zhao-1', 'member-sun-1', 'member-wang-1', 'member-zhao-2', 'member-sun-2']
+const defaultInviteSelection = ['member-zhang-1', 'member-li-1', 'member-zhao-1', 'member-sun-1', 'member-wang-2']
+const defaultRoles = (ids: string[]): Record<string, CandidateRole> => Object.fromEntries(ids.map((id) => [id, '查看员']))
 
 export default function App() {
   const [activeProduct, setActiveProduct] = useState<'research' | 'reading'>('research')
@@ -61,11 +63,17 @@ export default function App() {
   const [importFileName, setImportFileName] = useState('')
   const [documentType, setDocumentType] = useState<'document' | 'sheet'>('document')
   const [inviteSelection, setInviteSelection] = useState<string[]>(defaultInviteSelection)
+  const [inviteRoles, setInviteRoles] = useState<Record<string, CandidateRole>>(() => defaultRoles(defaultInviteSelection))
+  const [teamName, setTeamName] = useState('')
   const [teamInviteSelection, setTeamInviteSelection] = useState<string[]>([])
-  const [teamInviteOpen, setTeamInviteOpen] = useState(false)
+  const [teamInviteRoles, setTeamInviteRoles] = useState<Record<string, CandidateRole>>({})
+  const [teamInviteDraftSelection, setTeamInviteDraftSelection] = useState<string[]>([])
+  const [teamInviteDraftRoles, setTeamInviteDraftRoles] = useState<Record<string, CandidateRole>>({})
+  const [teamMemberPickerOpen, setTeamMemberPickerOpen] = useState(false)
   const [memberSearch, setMemberSearch] = useState('')
   const [createdTeams, setCreatedTeams] = useState<string[]>([])
   const toastTimer = useRef<number | null>(null)
+  const teamNameInputRef = useRef<HTMLInputElement | null>(null)
 
   const showToast = (message: string) => {
     setToast(message)
@@ -190,18 +198,59 @@ export default function App() {
 
   const submitNewTeam = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    const name = String(form.get('teamName') ?? '').trim()
-    if (!name) return
+    const name = teamName.trim()
+    if (!name) {
+      teamNameInputRef.current?.focus()
+      return
+    }
+    if (!teamInviteSelection.length) {
+      setTeamInviteDraftSelection([])
+      setTeamInviteDraftRoles({})
+      setMemberSearch('')
+      setTeamMemberPickerOpen(true)
+      return
+    }
+    const selectedMembers = memberCandidates.filter((candidate) => teamInviteSelection.includes(candidate.id))
     setTeamNames((current) => [...current, name])
     setCreatedTeams((current) => [...current, name])
+    setMembers(selectedMembers.map((candidate, index) => ({
+      id: index + 1,
+      name: candidate.name,
+      role: teamInviteRoles[candidate.id] ?? '查看员',
+      initials: candidate.name.slice(0, 1),
+      color: candidate.color,
+      status: '在线',
+      joinedAt: candidate.date,
+    })))
     setActiveTeam(name)
     setActiveSection('team')
     setTeamPanelTab('members')
-    setTeamInviteOpen(false)
+    setTeamName('')
     setTeamInviteSelection([])
+    setTeamInviteRoles({})
+    setTeamMemberPickerOpen(false)
     setModal(null)
     showToast(`团队空间“${name}”创建成功`)
+  }
+
+  const openTeamMemberPicker = () => {
+    setTeamInviteDraftSelection(teamInviteSelection)
+    setTeamInviteDraftRoles(teamInviteRoles)
+    setMemberSearch('')
+    setTeamMemberPickerOpen(true)
+  }
+
+  const cancelTeamMemberPicker = () => {
+    setTeamMemberPickerOpen(false)
+    setMemberSearch('')
+  }
+
+  const submitTeamMemberPicker = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setTeamInviteSelection(teamInviteDraftSelection)
+    setTeamInviteRoles(teamInviteDraftRoles)
+    setTeamMemberPickerOpen(false)
+    setMemberSearch('')
   }
 
   const submitInvite = (event: FormEvent<HTMLFormElement>) => {
@@ -213,7 +262,7 @@ export default function App() {
       ...selected.filter((candidate) => !current.some((member) => member.name === candidate.name)).map((candidate, index): MemberItem => ({
         id: nextId(current) + index,
         name: candidate.name,
-        role: '查看者',
+        role: inviteRoles[candidate.id] ?? '查看员',
         initials: candidate.name.slice(0, 1),
         color: candidate.color,
         status: '在线',
@@ -253,7 +302,13 @@ export default function App() {
             teamNames={teamNames}
             onSectionSelect={selectSection}
             onTeamSelect={(team) => { setActiveTeam(team); setOpenFolderName(null) }}
-            onNewTeam={() => { setTeamInviteOpen(false); setTeamInviteSelection([]); setModal('new-team') }}
+            onNewTeam={() => {
+              setTeamName('')
+              setTeamInviteSelection([])
+              setTeamInviteRoles({})
+              setTeamMemberPickerOpen(false)
+              setModal('new-team')
+            }}
           />
           <div className="main-pane">
             {activeSection === 'workbench' && (
@@ -340,7 +395,12 @@ export default function App() {
               onDeleteTodo={(id) => setTodos((current) => current.filter((todo) => todo.id !== id))}
               onAddTodoRequest={() => setModal('add-todo')}
               onAddComment={addComment}
-              onInvite={() => { setInviteSelection(defaultInviteSelection); setModal('invite-member') }}
+              onInvite={() => {
+                setInviteSelection(defaultInviteSelection)
+                setInviteRoles(defaultRoles(defaultInviteSelection))
+                setMemberSearch('')
+                setModal('invite-member')
+              }}
               onMemberRoleChange={(id, role) => setMembers((current) => current.map((member) => member.id === id ? { ...member, role } : member))}
               onRemoveMember={(id) => setMembers((current) => current.filter((member) => member.id !== id))}
             />
@@ -408,51 +468,76 @@ export default function App() {
         </Modal>
       )}
 
-      {activeProduct === 'research' && modal === 'new-team' && (
-        <Modal title="新建团队空间" onClose={() => setModal(null)} onSubmit={submitNewTeam} confirmText="确定">
+      {activeProduct === 'research' && modal === 'new-team' && !teamMemberPickerOpen && (
+        <Modal
+          title="新建团队空间"
+          onClose={() => { setTeamMemberPickerOpen(false); setModal(null) }}
+          onSubmit={submitNewTeam}
+          confirmText="确定"
+        >
           <label className="field-label" htmlFor="team-name"><span className="required-mark">*</span> 空间名称：</label>
-          <input className="text-field" id="team-name" name="teamName" autoFocus placeholder="请输入" />
-          <label className="field-label" htmlFor="team-invite"><span className="required-mark">*</span> 邀请成员：</label>
-          <div className="invite-compound">
-            <input id="team-invite" readOnly value={memberCandidates.filter((candidate) => teamInviteSelection.includes(candidate.id)).map((candidate) => candidate.name).join('、')} placeholder="请输入" />
-            <button type="button" aria-label="选择邀请成员" onClick={() => setTeamInviteOpen((open) => !open)}><span className="icon-plus" aria-hidden="true" /></button>
+          <input
+            className="text-field"
+            id="team-name"
+            ref={teamNameInputRef}
+            value={teamName}
+            onChange={(event) => setTeamName(event.target.value)}
+            autoFocus
+            maxLength={30}
+            placeholder="请输入"
+          />
+          <label className="field-label" id="team-invite-label"><span className="required-mark">*</span> 邀请成员：</label>
+          <div className="invite-compound" id="team-invite" role="group" aria-labelledby="team-invite-label">
+            <div className="invite-compound-content">
+              {teamInviteSelection.length === 0
+                ? <span className="invite-placeholder">请输入</span>
+                : memberCandidates.filter((candidate) => teamInviteSelection.includes(candidate.id)).map((candidate) => (
+                  <span className="invite-chip" key={candidate.id}>
+                    <i style={{ background: candidate.color }}>{candidate.name[0]}</i>
+                    <b>{candidate.name}</b>
+                  </span>
+                ))}
+            </div>
+            <button type="button" aria-label="选择邀请成员" onClick={openTeamMemberPicker}>
+              <img src="/assets/figma/add-member.svg" alt="" />
+            </button>
           </div>
-          {teamInviteOpen && <div className="compact-member-options">
-            {memberCandidates.slice(0, 5).map((candidate) => <label key={candidate.id}><input type="checkbox" checked={teamInviteSelection.includes(candidate.id)} onChange={() => setTeamInviteSelection((current) => current.includes(candidate.id) ? current.filter((id) => id !== candidate.id) : [...current, candidate.id])} />{candidate.name}</label>)}
-          </div>}
         </Modal>
       )}
 
-      {activeProduct === 'research' && modal === 'invite-member' && (
+      {activeProduct === 'research' && modal === 'new-team' && teamMemberPickerOpen && (
+        <Modal title="选择成员" onClose={cancelTeamMemberPicker} onSubmit={submitTeamMemberPicker} confirmText="确定" wide tall>
+          <MemberPicker
+            candidates={memberCandidates}
+            selectedIds={teamInviteDraftSelection}
+            roles={teamInviteDraftRoles}
+            search={memberSearch}
+            onSearchChange={setMemberSearch}
+            onToggle={(id) => {
+              setTeamInviteDraftSelection((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
+              setTeamInviteDraftRoles((current) => ({ ...current, [id]: current[id] ?? '查看员' }))
+            }}
+            onRemove={(id) => setTeamInviteDraftSelection((current) => current.filter((item) => item !== id))}
+            onRoleChange={(id, role) => setTeamInviteDraftRoles((current) => ({ ...current, [id]: role }))}
+          />
+        </Modal>
+      )}
+
+      {activeProduct === 'research' && modal === 'invite-member' && !teamMemberPickerOpen && (
         <Modal title="选择成员" onClose={() => setModal(null)} onSubmit={submitInvite} confirmText="确定" wide tall>
-          <div className="member-selector">
-            <section className="member-selector-column">
-              <input className="text-field member-search" value={memberSearch} onChange={(event) => setMemberSearch(event.target.value)} placeholder="请输入" aria-label="搜索成员" />
-              <h3>全部成员·80人</h3>
-              <div className="candidate-list">
-                {memberCandidates.filter((candidate) => candidate.name.includes(memberSearch.trim())).map((candidate) => (
-                  <label key={candidate.id}>
-                    <input type="checkbox" checked={inviteSelection.includes(candidate.id)} onChange={() => setInviteSelection((current) => current.includes(candidate.id) ? current.filter((id) => id !== candidate.id) : [...current, candidate.id])} />
-                    <span className="member-avatar" style={{ background: candidate.color }}>{candidate.name[0]}</span>
-                    <span><strong>{candidate.name}</strong><small>{candidate.email}</small></span>
-                  </label>
-                ))}
-              </div>
-            </section>
-            <section className="member-selector-column member-selector-selected">
-              <h3>已选：<b>{inviteSelection.length}</b> 人</h3>
-              <div className="selected-member-list">
-                {memberCandidates.filter((candidate) => inviteSelection.includes(candidate.id)).map((candidate) => (
-                  <article key={candidate.id}>
-                    <span className="member-avatar" style={{ background: candidate.color }}>{candidate.name[0]}</span>
-                    <span><strong>{candidate.name}</strong><small>{candidate.date}</small></span>
-                    <select aria-label={`${candidate.name}权限`} defaultValue="查看员"><option>查看员</option><option>编辑者</option><option>管理员</option></select>
-                    <button type="button" aria-label={`移除${candidate.name}`} onClick={() => setInviteSelection((current) => current.filter((id) => id !== candidate.id))}><span className="icon-close" aria-hidden="true" /></button>
-                  </article>
-                ))}
-              </div>
-            </section>
-          </div>
+          <MemberPicker
+            candidates={memberCandidates}
+            selectedIds={inviteSelection}
+            roles={inviteRoles}
+            search={memberSearch}
+            onSearchChange={setMemberSearch}
+            onToggle={(id) => {
+              setInviteSelection((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
+              setInviteRoles((current) => ({ ...current, [id]: current[id] ?? '查看员' }))
+            }}
+            onRemove={(id) => setInviteSelection((current) => current.filter((item) => item !== id))}
+            onRoleChange={(id, role) => setInviteRoles((current) => ({ ...current, [id]: role }))}
+          />
         </Modal>
       )}
 

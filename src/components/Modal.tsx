@@ -42,7 +42,7 @@ export function Modal({
         <header className="modal-header">
           <h2 id="modal-title">{title}</h2>
           <button className="icon-button modal-close" type="button" aria-label="关闭" onClick={onClose}>
-            <span aria-hidden="true" />
+            <img src="/assets/figma/modal-close.svg" alt="" />
           </button>
         </header>
         <div className="modal-body">{children}</div>

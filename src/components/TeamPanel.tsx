@@ -166,7 +166,7 @@ export function TeamPanel({
                     <div className="member-role-menu" role="menu" onClick={(event) => event.stopPropagation()}>
                       <button type="button" role="menuitem" onClick={() => { onMemberRoleChange(member.id, '管理员'); setRoleMenuMemberId(null) }}>管理员</button>
                       <button type="button" role="menuitem" className={member.role === '编辑者' ? 'is-current' : ''} onClick={() => { onMemberRoleChange(member.id, '编辑者'); setRoleMenuMemberId(null) }}>编辑者</button>
-                      <button type="button" role="menuitem" className={member.role === '查看者' ? 'is-current' : ''} onClick={() => { onMemberRoleChange(member.id, '查看者'); setRoleMenuMemberId(null) }}>查看员</button>
+                      <button type="button" role="menuitem" className={member.role === '查看员' ? 'is-current' : ''} onClick={() => { onMemberRoleChange(member.id, '查看员'); setRoleMenuMemberId(null) }}>查看员</button>
                       <button type="button" role="menuitem" className="is-danger" onClick={() => { onRemoveMember(member.id); setRoleMenuMemberId(null) }}>可移除</button>
                     </div>
                   )}
