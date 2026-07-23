@@ -196,6 +196,7 @@ export function ReadingReader({
   const [translatedResult, setTranslatedResult] = useState<number | null>(null)
   const [locatedResult, setLocatedResult] = useState<number | null>(null)
   const [aiQuestion, setAiQuestion] = useState('')
+  const [aiExchange, setAiExchange] = useState<{ question: string; answer: string } | null>(null)
   const [documentMenuOpen, setDocumentMenuOpen] = useState(false)
   const [maximized, setMaximized] = useState(false)
   const [noteDetailId, setNoteDetailId] = useState<number | null>(null)
@@ -355,6 +356,17 @@ export function ReadingReader({
       paperScrollRef.current?.scrollTo({ top: origin.scrollTop, behavior: 'auto' })
     }
     locationOriginRef.current = null
+  }
+
+  const submitAiQuestion = () => {
+    const question = aiQuestion.trim()
+    if (!question) return
+    setAiExchange({
+      question,
+      answer: '功能化碳纳米管通过表面羧基、氨基对多硫化物进行多位点化学锚定，降低穿梭迁移并改善循环稳定性；论文以原位XRD、冷冻电镜和DFT计算共同验证了这一机制。',
+    })
+    setAiQuestion('')
+    onToast('问题已提交')
   }
 
   const closeSearchDrawer = () => {
@@ -1153,6 +1165,7 @@ export function ReadingReader({
               <article className="reading-insight-card reading-insight-card--contribution"><h3>核心贡献</h3><p>本文首次系统揭示了功能化CNT表面官能团与多硫化物的化学吸附机理，提出了基于多位点锚定的穿梭抑制策略，实现了186%的比容量提升</p></article>
               <article className="reading-insight-card reading-insight-card--innovation"><h3>创新点</h3><ul><li>原位XRD追踪充放电过程中多硫化物演化</li><li>DFT计算揭示化学吸附能垒</li><li>1000次长循环验证稳定性</li></ul></article>
               <article className="reading-insight-card reading-insight-card--limit"><h3>研究局限</h3><ul><li>原位XRD追踪充放电过程中多硫化物演化</li></ul></article>
+              {aiExchange && <article className="reading-ai-exchange" aria-live="polite"><p className="reading-ai-exchange-question">{aiExchange.question}</p><p className="reading-ai-exchange-answer">{aiExchange.answer}</p></article>}
             </div>
           )}
           {rightPanel === 'charts' && <ReadingCharts onExport={exportChart} />}
@@ -1160,7 +1173,7 @@ export function ReadingReader({
           {rightPanel === 'metadata' && <ReadingMetadata />}
           {rightPanel === 'graph' && <ReadingGraph onView={() => onToast('已打开关联论文详情')} />}
         </div>
-        {rightPanel === 'ai' && <div className="reading-ai-question"><label htmlFor="reading-ai-question"><img src="/assets/reading/ai.svg" alt="" />AI问答</label><div><input id="reading-ai-question" value={aiQuestion} onChange={(event) => setAiQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && aiQuestion.trim()) { onToast('问题已提交'); setAiQuestion('') } }} placeholder="向AI提问关于这篇论文..." /><button type="button" aria-label="提交问题" onClick={() => { if (!aiQuestion.trim()) return; onToast('问题已提交'); setAiQuestion('') }}><span className="reading-submit-arrow" aria-hidden="true" /></button></div></div>}
+        {rightPanel === 'ai' && <div className="reading-ai-question"><label htmlFor="reading-ai-question"><img src="/assets/reading/ai.svg" alt="" />AI问答</label><div><input id="reading-ai-question" value={aiQuestion} onChange={(event) => setAiQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submitAiQuestion() }} placeholder="向AI提问关于这篇论文..." /><button type="button" aria-label="提交问题" disabled={!aiQuestion.trim()} onClick={submitAiQuestion}><span className="reading-submit-arrow" aria-hidden="true" /></button></div></div>}
       </aside>
 
       <footer className="reading-footer">

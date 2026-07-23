@@ -20,6 +20,8 @@ interface SpaceViewProps {
   onToggleFavorite: (id: number) => void
   onDelete: (id: number) => void
   onShare: (id: number) => void
+  onRenameDocument: (id: number, title: string) => void
+  onCreateNote: (documentItem: ResearchDocument) => void
   emptyTeam?: boolean
 }
 
@@ -41,6 +43,8 @@ export function SpaceView({
   onToggleFavorite,
   onDelete,
   onShare,
+  onRenameDocument,
+  onCreateNote,
   emptyTeam = false,
 }: SpaceViewProps) {
   const label = mode === 'personal' ? '我的空间' : teamName ?? 'AI研究团队'
@@ -156,6 +160,8 @@ export function SpaceView({
             onToggleFavorite={onToggleFavorite}
             onDelete={onDelete}
             onShare={onShare}
+            onRename={onRenameDocument}
+            onCreateNote={onCreateNote}
           />
         </section>}
       </div>

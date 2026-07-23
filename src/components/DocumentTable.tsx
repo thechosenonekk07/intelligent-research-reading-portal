@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { createPortal } from 'react-dom'
 import type { ResearchDocument, WorkbenchTab } from '../types'
 
 interface DocumentTableProps {
@@ -11,6 +12,8 @@ interface DocumentTableProps {
   onDelete: (id: number) => void
   onShare: (id: number) => void
   onRestore?: (id: number) => void
+  onRename?: (id: number, title: string) => void
+  onCreateNote?: (documentItem: ResearchDocument) => void
 }
 
 function KindTag({ kind }: { kind: ResearchDocument['kind'] }) {
@@ -74,8 +77,14 @@ export function DocumentTable({
   onDelete,
   onShare,
   onRestore,
+  onRename,
+  onCreateNote,
 }: DocumentTableProps) {
   const [spaceMenuId, setSpaceMenuId] = useState<number | null>(null)
+  const [spaceMenuPosition, setSpaceMenuPosition] = useState({ top: 0, left: 0 })
+  const [renamingDocumentId, setRenamingDocumentId] = useState<number | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const spaceMenuRef = useRef<HTMLDivElement>(null)
   const isWorkbench = mode === 'workbench'
   const isFavorites = isWorkbench && workbenchTab === 'favorites'
   const isRecycle = mode === 'recycle'
@@ -88,9 +97,54 @@ export function DocumentTable({
   useEffect(() => {
     if (spaceMenuId == null) return
     const close = () => setSpaceMenuId(null)
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSpaceMenuId(null)
+    }
+    const focusTimer = window.setTimeout(() => spaceMenuRef.current?.querySelector<HTMLButtonElement>('button')?.focus(), 0)
     window.addEventListener('click', close)
-    return () => window.removeEventListener('click', close)
+    window.addEventListener('keydown', closeOnEscape)
+    window.addEventListener('resize', close)
+    window.addEventListener('scroll', close, true)
+    return () => {
+      window.clearTimeout(focusTimer)
+      window.removeEventListener('click', close)
+      window.removeEventListener('keydown', closeOnEscape)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', close, true)
+    }
   }, [spaceMenuId])
+
+  const openSpaceMenu = (event: ReactMouseEvent<HTMLButtonElement>, documentId: number) => {
+    event.stopPropagation()
+    if (spaceMenuId === documentId) {
+      setSpaceMenuId(null)
+      return
+    }
+    const rect = event.currentTarget.getBoundingClientRect()
+    const menuWidth = 96
+    const menuHeight = 224
+    const viewportGap = 8
+    const left = Math.min(window.innerWidth - menuWidth - viewportGap, Math.max(viewportGap, rect.right - menuWidth))
+    const belowTop = rect.bottom + 2
+    const top = belowTop + menuHeight <= window.innerHeight - viewportGap
+      ? belowTop
+      : Math.max(viewportGap, rect.top - menuHeight - 2)
+    setSpaceMenuPosition({ top, left })
+    setSpaceMenuId(documentId)
+  }
+
+  const beginRename = (documentItem: ResearchDocument) => {
+    setRenamingDocumentId(documentItem.id)
+    setRenameValue(documentItem.title)
+    setSpaceMenuId(null)
+  }
+
+  const finishRename = (documentItem: ResearchDocument) => {
+    const nextTitle = renameValue.trim()
+    if (nextTitle && nextTitle !== documentItem.title) onRename?.(documentItem.id, nextTitle)
+    setRenamingDocumentId(null)
+    setRenameValue('')
+  }
 
   const downloadDocument = (documentItem: ResearchDocument) => {
     const body = `${documentItem.title}\n${documentItem.owner}\n${documentItem.kind}`
@@ -130,7 +184,25 @@ export function DocumentTable({
             ) : (
               documents.map((doc) => (
                 <tr key={doc.id}>
-                  <td className="title-cell">{doc.title}</td>
+                  <td className="title-cell">
+                    {renamingDocumentId === doc.id ? (
+                      <input
+                        className="document-title-rename"
+                        value={renameValue}
+                        autoFocus
+                        aria-label="文档新名称"
+                        onChange={(event) => setRenameValue(event.target.value)}
+                        onBlur={() => finishRename(doc)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') finishRename(doc)
+                          if (event.key === 'Escape') {
+                            setRenamingDocumentId(null)
+                            setRenameValue('')
+                          }
+                        }}
+                      />
+                    ) : doc.title}
+                  </td>
                   {isWorkbench && <td>{doc.location}</td>}
                   <td>
                     <span className="owner-cell">
@@ -167,14 +239,7 @@ export function DocumentTable({
                         <>
                           <button type="button" onClick={() => onShare(doc.id)}>分享</button>
                           <span className="document-space-menu-wrap">
-                            <button className="more-button" type="button" aria-label={`${doc.title}更多操作`} aria-expanded={spaceMenuId === doc.id} onClick={(event) => { event.stopPropagation(); setSpaceMenuId((current) => current === doc.id ? null : doc.id) }}><span className="more-dots" aria-hidden="true"><i /><i /><i /></span></button>
-                            {spaceMenuId === doc.id && <span className="document-space-menu" role="menu" onClick={(event) => event.stopPropagation()}>
-                              <button type="button" role="menuitem" onClick={() => setSpaceMenuId(null)}>笔记</button>
-                              <button type="button" role="menuitem" onClick={() => { onToggleFavorite(doc.id); setSpaceMenuId(null) }}>{doc.favorite ? '取消收藏' : '收藏'}</button>
-                              <button type="button" role="menuitem" onClick={() => { downloadDocument(doc); setSpaceMenuId(null) }}>下载</button>
-                              <button type="button" role="menuitem" onClick={() => setSpaceMenuId(null)}>重命名</button>
-                              <button type="button" role="menuitem" className="danger-link" onClick={() => { onDelete(doc.id); setSpaceMenuId(null) }}>删除</button>
-                            </span>}
+                            <button className="more-button" type="button" aria-label={`${doc.title}更多操作`} aria-haspopup="menu" aria-expanded={spaceMenuId === doc.id} onClick={(event) => openSpaceMenu(event, doc.id)}><span className="more-dots" aria-hidden="true"><i /><i /><i /></span></button>
                           </span>
                         </>
                       )}
@@ -187,6 +252,26 @@ export function DocumentTable({
         </table>
       </div>
       <Pagination page={page} onChange={onPageChange} />
+      {spaceMenuId != null && typeof document !== 'undefined' && createPortal((() => {
+        const documentItem = documents.find((item) => item.id === spaceMenuId)
+        if (!documentItem) return null
+        return (
+          <div
+            className="document-space-menu"
+            ref={spaceMenuRef}
+            role="menu"
+            aria-label={`${documentItem.title}更多操作`}
+            style={{ top: spaceMenuPosition.top, left: spaceMenuPosition.left }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button type="button" role="menuitem" onClick={() => { onCreateNote?.(documentItem); setSpaceMenuId(null) }}>笔记</button>
+            <button type="button" role="menuitem" onClick={() => { onToggleFavorite(documentItem.id); setSpaceMenuId(null) }}>{documentItem.favorite ? '取消收藏' : '收藏'}</button>
+            <button type="button" role="menuitem" onClick={() => { downloadDocument(documentItem); setSpaceMenuId(null) }}>下载</button>
+            <button type="button" role="menuitem" onClick={() => beginRename(documentItem)}>重命名</button>
+            <button type="button" role="menuitem" className="danger-link" onClick={() => { onDelete(documentItem.id); setSpaceMenuId(null) }}>删除</button>
+          </div>
+        )
+      })(), document.body)}
     </div>
   )
 }

@@ -127,6 +127,15 @@ export default function App() {
     showToast(`已共享到${activeTeam}`)
   }
 
+  const renameDocument = (id: number, title: string) => {
+    setDocuments((current) => current.map((doc) => doc.id === id ? { ...doc, title } : doc))
+    showToast('文档已重命名')
+  }
+
+  const createDocumentNote = (documentItem: ResearchDocument) => {
+    showToast(`已为“${documentItem.title}”新建笔记`)
+  }
+
   const submitTodo = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
@@ -342,6 +351,8 @@ export default function App() {
                 onToggleFavorite={toggleFavorite}
                 onDelete={deleteDocument}
                 onShare={shareDocument}
+                onRenameDocument={renameDocument}
+                onCreateNote={createDocumentNote}
               />
             )}
             {activeSection === 'team' && (
@@ -363,6 +374,8 @@ export default function App() {
                 onToggleFavorite={toggleFavorite}
                 onDelete={deleteDocument}
                 onShare={shareDocument}
+                onRenameDocument={renameDocument}
+                onCreateNote={createDocumentNote}
                 emptyTeam={createdTeams.includes(activeTeam)}
               />
             )}

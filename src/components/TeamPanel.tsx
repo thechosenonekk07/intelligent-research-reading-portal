@@ -165,7 +165,9 @@ export function TeamPanel({
                 onClick={() => setCommentRangeOpen((open) => !open)}
               >
                 {selectedCommentRange.label}
-                <img className={commentRangeOpen ? 'is-open' : ''} src="/assets/figma/comment-filter-chevron.svg" alt="" />
+                <span className={`comment-range-chevron${commentRangeOpen ? ' is-open' : ''}`} aria-hidden="true">
+                  <img src="/assets/figma/comment-filter-chevron.svg" alt="" />
+                </span>
               </button>
               {commentRangeOpen && (
                 <div className="comment-range-menu" role="menu" aria-label="评论时间范围">
