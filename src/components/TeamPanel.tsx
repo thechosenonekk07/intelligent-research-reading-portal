@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CommentItem, MemberItem, TeamPanelTab, TodoItem } from '../types'
 
 interface TeamPanelProps {
@@ -10,7 +10,7 @@ interface TeamPanelProps {
   onToggleTodo: (id: number) => void
   onDeleteTodo: (id: number) => void
   onAddTodoRequest: () => void
-  onAddComment: (content: string, attachment?: string, replyTo?: string) => void
+  onAddComment: (content: string, attachment?: string, replyTo?: string, parentCommentId?: number) => void
   onInvite: () => void
   onMemberRoleChange: (id: number, role: MemberItem['role']) => void
   onRemoveMember: (id: number) => void
@@ -21,6 +21,26 @@ const tabs: Array<{ id: TeamPanelTab; label: string }> = [
   { id: 'comments', label: '评论' },
   { id: 'members', label: '成员' },
 ]
+
+type CommentRange = 'week' | 'month' | 'quarter' | 'all'
+
+const commentRanges: Array<{ id: CommentRange; label: string; days: number }> = [
+  { id: 'week', label: '最近1周', days: 7 },
+  { id: 'month', label: '最近1月', days: 31 },
+  { id: 'quarter', label: '最近3月', days: 93 },
+  { id: 'all', label: '全部评论', days: Number.POSITIVE_INFINITY },
+]
+
+function commentAgeInDays(time: string) {
+  if (time === '刚刚') return 0
+  if (time === '昨天') return 1
+  const amount = Number.parseInt(time, 10)
+  if (!Number.isFinite(amount)) return 0
+  if (time.includes('分钟') || time.includes('小时')) return amount / 24
+  if (time.includes('周')) return amount * 7
+  if (time.includes('月')) return amount * 30
+  return amount
+}
 
 export function TeamPanel({
   tab,
@@ -40,8 +60,15 @@ export function TeamPanel({
   const [attachment, setAttachment] = useState('')
   const [replyToId, setReplyToId] = useState<number | null>(null)
   const [replyText, setReplyText] = useState('')
+  const [commentRange, setCommentRange] = useState<CommentRange>('month')
+  const [commentRangeOpen, setCommentRangeOpen] = useState(false)
   const [roleMenuMemberId, setRoleMenuMemberId] = useState<number | null>(null)
+  const commentRangeRef = useRef<HTMLDivElement>(null)
   const completedCount = todos.filter((item) => item.done).length
+  const selectedCommentRange = commentRanges.find((item) => item.id === commentRange) ?? commentRanges[1]
+  const visibleComments = useMemo(() => comments
+    .filter((item) => item.parentCommentId == null && commentAgeInDays(item.time) <= selectedCommentRange.days)
+    .sort((first, second) => commentAgeInDays(first.time) - commentAgeInDays(second.time)), [comments, selectedCommentRange.days])
 
   useEffect(() => {
     if (roleMenuMemberId == null) return
@@ -49,6 +76,22 @@ export function TeamPanel({
     window.addEventListener('click', close)
     return () => window.removeEventListener('click', close)
   }, [roleMenuMemberId])
+
+  useEffect(() => {
+    if (!commentRangeOpen) return
+    const closeOnPointerDown = (event: PointerEvent) => {
+      if (!commentRangeRef.current?.contains(event.target as Node)) setCommentRangeOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCommentRangeOpen(false)
+    }
+    window.addEventListener('pointerdown', closeOnPointerDown)
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      window.removeEventListener('pointerdown', closeOnPointerDown)
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [commentRangeOpen])
 
   const submitComment = () => {
     if (!comment.trim() && !attachment) return
@@ -60,7 +103,7 @@ export function TeamPanel({
   const submitReply = (item: CommentItem) => {
     const value = replyText.trim()
     if (!value) return
-    onAddComment(value, undefined, item.author)
+    onAddComment(value, undefined, item.author, item.id)
     setReplyToId(null)
     setReplyText('')
   }
@@ -112,29 +155,67 @@ export function TeamPanel({
       {tab === 'comments' && (
         <div className="panel-content comments-panel">
           <div className="panel-heading-row">
-            <strong className="panel-title">近期评论·{comments.length}条</strong>
-            <button className="quiet-select" type="button">最近1月<img src="/assets/direction-down.svg" alt="" /></button>
+            <strong className="panel-title">近期评论·{visibleComments.length}条</strong>
+            <div className="comment-range" ref={commentRangeRef}>
+              <button
+                className="comment-range-trigger"
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={commentRangeOpen}
+                onClick={() => setCommentRangeOpen((open) => !open)}
+              >
+                {selectedCommentRange.label}
+                <img className={commentRangeOpen ? 'is-open' : ''} src="/assets/figma/comment-filter-chevron.svg" alt="" />
+              </button>
+              {commentRangeOpen && (
+                <div className="comment-range-menu" role="menu" aria-label="评论时间范围">
+                  {commentRanges.map((range) => (
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={range.id === commentRange}
+                      className={range.id === commentRange ? 'is-selected' : ''}
+                      key={range.id}
+                      onClick={() => { setCommentRange(range.id); setCommentRangeOpen(false) }}
+                    >{range.label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <div className="comment-list">
-            {comments.map((item) => (
+            {visibleComments.map((item) => {
+              const replyCount = comments.filter((commentItem) => commentItem.parentCommentId === item.id).length
+              return (
               <article className="comment-item" key={item.id}>
-                <div className="comment-avatar">{item.author.slice(0, 1)}</div>
-                <div>
-                  <div className="comment-author">{item.author}{item.replyTo && <span> 回复 {item.replyTo}</span>}</div>
-                  {replyToId === item.id && <div className="comment-inline-reply"><textarea value={replyText} onChange={(event) => setReplyText(event.target.value)} autoFocus aria-label={`回复${item.author}`} /><div><button type="button" onClick={() => { setReplyToId(null); setReplyText('') }}>取消</button><button type="button" onClick={() => submitReply(item)}>确定</button></div></div>}
-                  <p>{item.content}</p>
-                  {item.attachment && <button type="button" className="attachment-chip"><span className="attachment-paperclip" aria-hidden="true" />{item.attachment}</button>}
-                  <small>{item.time}&nbsp;&nbsp; <button type="button" className="comment-reply-trigger" onClick={() => { setReplyToId(item.id); setReplyText('') }}><span aria-hidden="true" />回复</button></small>
+                <div className="comment-head">
+                  <div className="comment-avatar">{item.author.slice(0, 1)}</div>
+                  <div className="comment-identity">
+                    <div className="comment-author">{item.author}</div>
+                    <time>{item.time}</time>
+                  </div>
+                  <button type="button" className="comment-reply-trigger" onClick={() => { setReplyToId(item.id); setReplyText('') }}>
+                    <img src="/assets/figma/comment-reply.svg" alt="" />回复
+                  </button>
                 </div>
+                <p>{item.content}</p>
+                {item.attachment && <button type="button" className="attachment-chip"><img src="/assets/figma/comment-attachment.svg" alt="" />{item.attachment}</button>}
+                {replyCount > 0 && <button className="comment-replies-count" type="button">{replyCount}条回复<img src="/assets/figma/comment-filter-chevron.svg" alt="" /></button>}
+                {replyToId === item.id && (
+                  <div className="comment-inline-reply">
+                    <textarea value={replyText} onChange={(event) => setReplyText(event.target.value)} autoFocus aria-label={`回复${item.author}`} placeholder="回复" />
+                    <div><button type="button" onClick={() => { setReplyToId(null); setReplyText('') }}>取消</button><i aria-hidden="true" /><button type="button" disabled={!replyText.trim()} onClick={() => submitReply(item)}>确定</button></div>
+                  </div>
+                )}
               </article>
-            ))}
+            )})}
           </div>
           <div className="comment-composer">
             <div className="comment-editor-box">
               <textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="添加评论..." />
               {attachment && <span className="attachment-preview"><i>PDF</i><b>{attachment}</b><button type="button" aria-label="移除附件" onClick={() => setAttachment('')}><span aria-hidden="true" /></button></span>}
               <div className="comment-tools">
-                <label className="upload-link"><span className="attachment-paperclip" aria-hidden="true" />附件<input type="file" onChange={(event) => setAttachment(event.target.files?.[0]?.name ?? '')} /></label>
+                <label className="upload-link" aria-label="添加附件"><img src="/assets/figma/comment-composer-attachment.svg" alt="" /><input type="file" onChange={(event) => setAttachment(event.target.files?.[0]?.name ?? '')} /></label>
               </div>
             </div>
             <button className="button button--primary comment-send" type="button" onClick={submitComment}>发送评论</button>

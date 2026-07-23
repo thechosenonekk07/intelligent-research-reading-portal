@@ -139,7 +139,7 @@ export default function App() {
     showToast('待办已添加')
   }
 
-  const addComment = (content: string, attachment?: string, replyTo?: string) => {
+  const addComment = (content: string, attachment?: string, replyTo?: string, parentCommentId?: number) => {
     setComments((current) => [...current, {
       id: nextId(current),
       author: '张三',
@@ -147,6 +147,7 @@ export default function App() {
       time: '刚刚',
       attachment,
       replyTo,
+      parentCommentId,
     }])
     showToast('评论发送成功')
   }

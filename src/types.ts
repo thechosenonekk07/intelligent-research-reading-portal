@@ -41,6 +41,7 @@ export interface CommentItem {
   content: string
   time: string
   replyTo?: string
+  parentCommentId?: number
   attachment?: string
 }
 
