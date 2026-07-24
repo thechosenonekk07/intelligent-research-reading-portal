@@ -1712,14 +1712,13 @@
 }
 
 .reading-context-menu {
-  top: 324px;
-  right: 62px;
   display: flex;
-  width: max-content;
-  height: 40px;
+  width: 156px;
+  height: 28px;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
   padding: 0 8px;
+  box-sizing: border-box;
   border: 0;
   border-radius: 4px;
   color: #fff;
@@ -1728,12 +1727,12 @@
 }
 
 .reading-context-menu > button {
-  height: 32px;
-  padding: 5px 0;
+  height: 20px;
+  padding: 0;
   border-radius: 3px;
   color: #fff;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 12px;
+  line-height: 20px;
   text-align: left;
 }
 
@@ -1753,9 +1752,22 @@
   gap: 4px;
 }
 
+.reading-context-color .reading-inline-chevron {
+  width: 10px;
+  height: 10px;
+  flex-basis: 10px;
+}
+
+.reading-context-color .reading-inline-chevron::before {
+  top: 2px;
+  left: 2px;
+  width: 5px;
+  height: 5px;
+}
+
 .reading-context-color i {
-  width: 16px;
-  height: 16px;
+  width: 10px;
+  height: 10px;
   border-radius: 2px;
   background: #ffe4ba;
 }
@@ -1765,8 +1777,10 @@
   z-index: 19;
   top: 368px;
   right: 62px;
-  width: 272px;
-  padding: 8px 10px 10px;
+  width: 210px;
+  height: 84px;
+  padding: 8px 12px;
+  box-sizing: border-box;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: #fff;
@@ -1775,7 +1789,7 @@
 
 .reading-color-palette strong {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   color: var(--text-3);
   font-size: 12px;
   font-weight: 400;
@@ -1783,13 +1797,13 @@
 
 .reading-color-palette > div {
   display: grid;
-  grid-template-columns: repeat(8, 20px);
+  grid-template-columns: repeat(8, 18px);
   gap: 6px;
 }
 
 .reading-color-palette button {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border: 1px solid transparent;
   border-radius: 2px;
 }
@@ -1904,8 +1918,8 @@
 }
 
 .reading-context-note img {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   filter: brightness(0) invert(1);
 }
 
@@ -1931,12 +1945,20 @@
 .reading-float-card header strong {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  color: var(--text-1);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
 }
 
-.reading-float-card header strong img {
+.reading-result-title-icon {
+  display: block;
   width: 24px;
   height: 24px;
+  flex: 0 0 24px;
+  background: var(--primary);
+  mask: url('/assets/reading/editor-translate.svg') center / 24px 24px no-repeat;
 }
 
 .reading-float-card p {
@@ -1981,6 +2003,30 @@
   flex: 1;
 }
 
+.reading-float-card > footer .reading-result-toggle {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  place-items: center;
+  border-radius: 0;
+  background: transparent;
+}
+
+.reading-result-toggle img {
+  width: 22px;
+  height: 22px;
+  transition: transform 120ms ease;
+}
+
+.reading-result-toggle img.is-collapsed {
+  transform: rotate(180deg);
+}
+
+.reading-float-card > footer .reading-result-toggle:hover {
+  background: transparent;
+}
+
 .reading-result-stack {
   position: absolute;
   z-index: 18;
@@ -1999,11 +2045,29 @@
 }
 
 .reading-float-card--collapsed {
+  height: 94px;
   min-height: 94px;
+  overflow: hidden;
+}
+
+.reading-float-card--collapsed header {
+  margin-bottom: 0;
+}
+
+.reading-float-card--collapsed > footer {
+  margin-top: 10px;
+}
+
+.reading-float-card--translate:not(.reading-float-card--collapsed) {
+  min-height: 202px;
 }
 
 .reading-float-card--explain {
   min-height: 180px;
+}
+
+.reading-float-card--explain.reading-float-card--collapsed {
+  min-height: 94px;
 }
 
 .reading-note-editor {
@@ -2650,7 +2714,9 @@
   align-items: center;
   gap: 4px;
   margin-bottom: 8px;
+  color: #7b61ff;
   font-size: 12px;
+  font-weight: 500;
   line-height: 20px;
 }
 
@@ -2682,7 +2748,9 @@
   border: 0;
   border-radius: 0;
   color: var(--text-1);
+  font-family: inherit;
   font-size: 14px;
+  font-weight: 400;
   line-height: 22px;
   outline: none;
 }
@@ -2695,6 +2763,10 @@
   width: 32px;
   height: 30px;
   flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
   border-radius: 0 3px 3px 0;
   color: #fff;
   background: var(--primary);
@@ -2708,12 +2780,6 @@
 
 .reading-ai-question button:active:not(:disabled) {
   background: #0a2ea6;
-}
-
-.reading-ai-question button:disabled {
-  color: #c9cdd4;
-  background: transparent;
-  cursor: default;
 }
 
 .reading-ai-exchange {

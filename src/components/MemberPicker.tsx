@@ -107,7 +107,10 @@ export function MemberPicker({
                         setOpenRoleId((current) => current === candidate.id ? null : candidate.id)
                       }}
                     >
-                      {role}<img src="/assets/figma/role-chevron.svg" alt="" />
+                      {role}
+                      <span className="selected-member-role-chevron" aria-hidden="true">
+                        <img src="/assets/figma/role-chevron.svg" alt="" />
+                      </span>
                     </button>
                     {openRoleId === candidate.id && (
                       <span className="selected-member-role-menu" role="menu" onClick={(event) => event.stopPropagation()}>

@@ -8,6 +8,13 @@ type ContextAction = null | 'highlight' | 'translate' | 'explain' | 'screenshot'
 type ActiveTool = null | 'search' | 'note' | 'screenshot'
 type CropHandle = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
 
+interface ReadingResultCards {
+  translationVisible: boolean
+  translationExpanded: boolean
+  explanationVisible: boolean
+  explanationExpanded: boolean
+}
+
 interface NoteSelection {
   kind: 'field' | 'range'
   sectionTitle: string
@@ -185,6 +192,12 @@ export function ReadingReader({
   const [zoom, setZoom] = useState(50)
   const [thumbnailZoom, setThumbnailZoom] = useState(25)
   const [contextAction, setContextAction] = useState<ContextAction>(null)
+  const [resultCards, setResultCards] = useState<ReadingResultCards>({
+    translationVisible: false,
+    translationExpanded: false,
+    explanationVisible: false,
+    explanationExpanded: false,
+  })
   const [highlightColorIndex, setHighlightColorIndex] = useState(3)
   const [colorMenuOpen, setColorMenuOpen] = useState(false)
   const [activeTool, setActiveTool] = useState<ActiveTool>(null)
@@ -307,7 +320,7 @@ export function ReadingReader({
   }
 
   const syncPageFromPaperScroll = () => {
-    if (contextAction && contextAction !== 'screenshot') {
+    if (contextAction === 'highlight') {
       setContextAction(null)
       setColorMenuOpen(false)
     }
@@ -385,6 +398,12 @@ export function ReadingReader({
 
   const resetToolSurfaces = () => {
     setContextAction(null)
+    setResultCards({
+      translationVisible: false,
+      translationExpanded: false,
+      explanationVisible: false,
+      explanationExpanded: false,
+    })
     setColorMenuOpen(false)
     setNoteSelection(null)
     setScreenshotDragStart(null)
@@ -445,10 +464,11 @@ export function ReadingReader({
   const placeContextMenu = (bounds: DOMRect) => {
     const canvasBounds = canvasRef.current?.getBoundingClientRect()
     if (!canvasBounds) return
-    const menuWidth = 236
+    const menuWidth = 156
+    const menuHeight = 28
     setContextMenuPosition({
-      left: Math.max(8, Math.min(canvasBounds.width - menuWidth - 8, bounds.right - canvasBounds.left - menuWidth)),
-      top: Math.max(8, Math.min(canvasBounds.height - 48, bounds.bottom - canvasBounds.top + 8)),
+      left: Math.max(8, Math.min(canvasBounds.width - menuWidth - 8, bounds.left - canvasBounds.left)),
+      top: Math.max(8, Math.min(canvasBounds.height - menuHeight - 8, bounds.top - canvasBounds.top - menuHeight - 8)),
     })
   }
 
@@ -463,6 +483,12 @@ export function ReadingReader({
     const text = event.currentTarget.textContent?.trim() ?? ''
     window.getSelection()?.removeAllRanges()
     placeContextMenu(event.currentTarget.getBoundingClientRect())
+    setResultCards({
+      translationVisible: false,
+      translationExpanded: false,
+      explanationVisible: false,
+      explanationExpanded: false,
+    })
     setNoteSelection({ kind: 'field', sectionTitle, text, start: 0, end: text.length })
     setContextAction('highlight')
   }
@@ -502,6 +528,12 @@ export function ReadingReader({
         const start = Math.min(pointerStart.index, endIndex)
         const end = Math.max(pointerStart.index, endIndex)
         noteRangeHandledRef.current = true
+        setResultCards({
+          translationVisible: false,
+          translationExpanded: false,
+          explanationVisible: false,
+          explanationExpanded: false,
+        })
         setNoteSelection({ kind: 'range', sectionTitle, text: fullText.slice(start, end), start, end })
         const bounds = event.currentTarget.getBoundingClientRect()
         placeContextMenu(new DOMRect(event.clientX, Math.min(event.clientY, bounds.bottom), 0, 0))
@@ -528,6 +560,12 @@ export function ReadingReader({
     const end = Math.max(anchorIndex, focusIndex)
     const bounds = browserSelection.getRangeAt(0).getBoundingClientRect()
     noteRangeHandledRef.current = true
+    setResultCards({
+      translationVisible: false,
+      translationExpanded: false,
+      explanationVisible: false,
+      explanationExpanded: false,
+    })
     setNoteSelection({ kind: 'range', sectionTitle, text: selectedText, start, end })
     placeContextMenu(bounds)
     setContextAction('highlight')
@@ -737,21 +775,29 @@ export function ReadingReader({
     setNoteEditorExpanded(false)
   }
 
-  const startAddingNote = () => {
+  const openNoteEditor = (source: 'selection' | 'translation' | 'explanation') => {
     setEditingNoteId(0)
     setEditingNoteText('')
-    setPendingAddedNote(noteSelection?.text ?? '')
-    setNoteEditStage(0)
+    setPendingAddedNote(source === 'translation' ? translatedExcerpt : source === 'explanation' ? explainedExcerpt : noteSelection?.text ?? '')
+    setNoteEditStage(source === 'translation' ? 1 : source === 'explanation' ? 2 : 0)
     setUploadedNoteImages([])
     setNoteEditorExpanded(false)
     setLeftPanel('notes')
     if (leftOverlayLayout) setMobileLeftOpen(true)
     setContextAction(null)
+    setResultCards({
+      translationVisible: false,
+      translationExpanded: false,
+      explanationVisible: false,
+      explanationExpanded: false,
+    })
     setActiveTool(null)
     setNoteSelection(null)
     window.getSelection()?.removeAllRanges()
     setColorMenuOpen(false)
   }
+
+  const startAddingNote = () => openNoteEditor('selection')
 
   const commitEditedNote = () => {
     if (editingNoteId == null) return
@@ -764,6 +810,12 @@ export function ReadingReader({
     }
     setEditingNoteId(null)
     setContextAction(null)
+    setResultCards({
+      translationVisible: false,
+      translationExpanded: false,
+      explanationVisible: false,
+      explanationExpanded: false,
+    })
     setActiveTool(null)
     setNoteSelection(null)
     setNoteEditStage(0)
@@ -794,6 +846,62 @@ export function ReadingReader({
     } catch {
       onToast('复制失败，请手动复制')
     }
+  }
+
+  const showTranslation = () => {
+    setColorMenuOpen(false)
+    setContextAction('translate')
+    setResultCards({
+      translationVisible: true,
+      translationExpanded: true,
+      explanationVisible: false,
+      explanationExpanded: false,
+    })
+  }
+
+  const showExplanation = () => {
+    setColorMenuOpen(false)
+    setContextAction('explain')
+    setResultCards({
+      translationVisible: true,
+      translationExpanded: false,
+      explanationVisible: true,
+      explanationExpanded: true,
+    })
+  }
+
+  const closeResultCard = (card: 'translation' | 'explanation') => {
+    setResultCards((current) => {
+      const next = card === 'translation'
+        ? { ...current, translationVisible: false, translationExpanded: false, explanationExpanded: current.explanationVisible }
+        : { ...current, explanationVisible: false, explanationExpanded: false, translationExpanded: current.translationVisible }
+      if (!next.translationVisible && !next.explanationVisible) {
+        setContextAction(null)
+        setNoteSelection(null)
+      } else {
+        setContextAction(next.explanationVisible ? 'explain' : 'translate')
+      }
+      return next
+    })
+  }
+
+  const toggleResultCard = (card: 'translation' | 'explanation') => {
+    setResultCards((current) => {
+      if (card === 'translation') {
+        const expanding = !current.translationExpanded
+        return {
+          ...current,
+          translationExpanded: expanding,
+          explanationExpanded: current.explanationVisible ? !expanding : false,
+        }
+      }
+      const expanding = !current.explanationExpanded
+      return {
+        ...current,
+        explanationExpanded: expanding,
+        translationExpanded: current.translationVisible ? !expanding : false,
+      }
+    })
   }
 
   const downloadDocument = () => {
@@ -867,6 +975,12 @@ export function ReadingReader({
       if (!hasTemporaryUi) return
       event.preventDefault()
       setContextAction(null)
+      setResultCards({
+        translationVisible: false,
+        translationExpanded: false,
+        explanationVisible: false,
+        explanationExpanded: false,
+      })
       setColorMenuOpen(false)
       setActiveTool(null)
       setNoteSelection(null)
@@ -1102,19 +1216,31 @@ export function ReadingReader({
 
         {contextAction === 'highlight' && (
           <div className="reading-context-menu" style={{ left: contextMenuPosition.left, top: contextMenuPosition.top, right: 'auto' }} onMouseDown={(event) => event.preventDefault()}>
-            <button type="button" onClick={() => setContextAction('translate')}>中英翻译</button>
-            <button type="button" onClick={() => setContextAction('explain')}>AI解释</button>
+            <button type="button" onClick={showTranslation}>翻译</button>
+            <button type="button" onClick={showExplanation}>解释</button>
             <button type="button" className="reading-context-color" aria-label="选择背景颜色" onClick={() => setColorMenuOpen((open) => !open)}><i style={{ background: highlightColors[highlightColorIndex] }} /><span className={`reading-inline-chevron${colorMenuOpen ? ' is-up' : ''}`} aria-hidden="true" /></button>
             <span />
             <button type="button" className="reading-context-note" aria-label="添加笔记" onClick={startAddingNote}><img src="/assets/reading/note-tool.svg" alt="" /></button>
           </div>
         )}
-        {contextAction === 'highlight' && colorMenuOpen && <div className="reading-color-palette" style={{ left: contextMenuPosition.left, top: contextMenuPosition.top + 44, right: 'auto' }}><strong>背景颜色</strong><div>{highlightColors.map((color, index) => <button type="button" className={highlightColorIndex === index ? 'is-active' : ''} style={{ background: color === 'transparent' ? '#fff' : color }} aria-label={`背景色 ${index + 1}`} onClick={() => { setHighlightColorIndex(index); setColorMenuOpen(false) }} key={`${color}-${index}`} />)}</div></div>}
-        {contextAction === 'translate' && (
-          <div className="reading-float-card reading-float-card--translate"><header><strong><img src="/assets/reading/ai.svg" alt="" />实时翻译</strong><button type="button" className="reading-icon-close" aria-label="关闭实时翻译" onClick={() => setContextAction(null)} /></header><p><b>原文：</b>锂硫电池因具有较高的理论比容量和能量密度，被认为是具有应用前景的新一代储能体系。然而，在实际充放电过程</p><div className="reading-translation"><b>译文：</b>{translatedExcerpt}</div><footer><button type="button" onClick={() => void copyText(translatedExcerpt, '译文已复制')}>复制译文</button><button type="button" onClick={startAddingNote}>添加笔记</button><span /><button type="button" aria-label="收起实时翻译" onClick={() => setContextAction(null)}><span className="reading-inline-chevron is-up" /></button></footer></div>
-        )}
-        {contextAction === 'explain' && (
-          <div className="reading-result-stack"><div className="reading-float-card reading-float-card--collapsed"><header><strong><img src="/assets/reading/ai.svg" alt="" />实时翻译</strong><button type="button" className="reading-icon-close" aria-label="关闭实时翻译" onClick={() => setContextAction(null)} /></header><footer><button type="button" onClick={() => void copyText(translatedExcerpt, '译文已复制')}>复制译文</button><button type="button" onClick={startAddingNote}>添加笔记</button><span /><button type="button" aria-label="展开实时翻译" onClick={() => setContextAction('translate')}><span className="reading-inline-chevron" /></button></footer></div><div className="reading-float-card reading-float-card--explain"><header><strong><img src="/assets/reading/ai.svg" alt="" />AI解释</strong><button type="button" className="reading-icon-close" aria-label="关闭 AI 解释" onClick={() => setContextAction(null)} /></header><p><b>原文：</b>锂硫电池因具有较高的理论比容量和能量密度，被认为是具有应用前景的新一代储能体系。</p><div className="reading-ai-explain"><b>解释：</b>{explainedExcerpt}</div><footer><button type="button" onClick={() => void copyText(explainedExcerpt, '解释已复制')}>复制解释</button><button type="button" onClick={startAddingNote}>添加笔记</button><span /><button type="button" aria-label="收起 AI 解释" onClick={() => setContextAction('translate')}><span className="reading-inline-chevron is-up" /></button></footer></div></div>
+        {contextAction === 'highlight' && colorMenuOpen && <div className="reading-color-palette" style={{ left: Math.max(8, contextMenuPosition.left - 54), top: contextMenuPosition.top + 32, right: 'auto' }}><strong>背景颜色</strong><div>{highlightColors.map((color, index) => <button type="button" className={highlightColorIndex === index ? 'is-active' : ''} style={{ background: color === 'transparent' ? '#fff' : color }} aria-label={`背景色 ${index + 1}`} onClick={() => { setHighlightColorIndex(index); setColorMenuOpen(false) }} key={`${color}-${index}`} />)}</div></div>}
+        {(resultCards.translationVisible || resultCards.explanationVisible) && contextAction !== 'highlight' && contextAction !== 'screenshot' && (
+          <div className="reading-result-stack">
+            {resultCards.translationVisible && (
+              <div className={`reading-float-card reading-float-card--translate${resultCards.translationExpanded ? '' : ' reading-float-card--collapsed'}`}>
+                <header><strong><span className="reading-result-title-icon" aria-hidden="true" />实时翻译</strong><button type="button" className="reading-icon-close" aria-label="关闭实时翻译" onClick={() => closeResultCard('translation')} /></header>
+                {resultCards.translationExpanded && <><p><b>原文：</b>锂硫电池因具有较高的理论比容量和能量密度，被认为是具有应用前景的新一代储能体系。然而，在实际充放电过程</p><div className="reading-translation"><b>译文：</b>{translatedExcerpt}</div></>}
+                <footer><button type="button" onClick={() => void copyText(translatedExcerpt, '译文已复制')}>复制译文</button><button type="button" onClick={() => openNoteEditor('translation')}>添加笔记</button><span /><button type="button" className="reading-result-toggle" aria-label={resultCards.translationExpanded ? '收起实时翻译' : '展开实时翻译'} onClick={() => toggleResultCard('translation')}><img className={resultCards.translationExpanded ? '' : 'is-collapsed'} src="/assets/reading/result-toggle.svg" alt="" /></button></footer>
+              </div>
+            )}
+            {resultCards.explanationVisible && (
+              <div className={`reading-float-card reading-float-card--explain${resultCards.explanationExpanded ? '' : ' reading-float-card--collapsed'}`}>
+                <header><strong><span className="reading-result-title-icon" aria-hidden="true" />AI解释</strong><button type="button" className="reading-icon-close" aria-label="关闭 AI 解释" onClick={() => closeResultCard('explanation')} /></header>
+                {resultCards.explanationExpanded && <><p><b>原文：</b>锂硫电池因具有较高的理论比容量和能量密度，被认为是具有应用前景的新一代储能体系。</p><div className="reading-ai-explain"><b>解释：</b>{explainedExcerpt}</div></>}
+                <footer><button type="button" onClick={() => void copyText(explainedExcerpt, '解释已复制')}>复制解释</button><button type="button" onClick={() => openNoteEditor('explanation')}>添加笔记</button><span /><button type="button" className="reading-result-toggle" aria-label={resultCards.explanationExpanded ? '收起 AI 解释' : '展开 AI 解释'} onClick={() => toggleResultCard('explanation')}><img className={resultCards.explanationExpanded ? '' : 'is-collapsed'} src="/assets/reading/result-toggle.svg" alt="" /></button></footer>
+              </div>
+            )}
+          </div>
         )}
         {contextAction === 'screenshot' && cropRect && (
           createPortal(<div className="reading-screenshot-layer"><div className="reading-crop-area" style={{ left: cropRect.left, top: cropRect.top, width: cropRect.width, height: cropRect.height }}>{(['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as CropHandle[]).map((handle) => <span className={`reading-crop-handle is-${handle}`} aria-hidden="true" onPointerDown={(event) => beginCropResize(event, handle)} onPointerMove={moveCropResize} onPointerUp={finishCropResize} onPointerCancel={finishCropResize} key={handle} />)}<div className={`reading-crop-actions${cropRect.top + cropRect.height + 36 > window.innerHeight ? ' is-above' : ''}`}><button type="button" aria-label="下载截图" onClick={() => void downloadScreenshot()}><img src="/assets/reading/download.svg" alt="" /></button><span /><button type="button" aria-label="取消截图" onClick={cancelScreenshot}><span className="reading-icon-close" /></button><button type="button" aria-label="完成截图" onClick={() => void completeScreenshot()}><img src="/assets/selected-check.svg" alt="" /></button></div></div></div>, document.body)
@@ -1173,7 +1299,27 @@ export function ReadingReader({
           {rightPanel === 'metadata' && <ReadingMetadata />}
           {rightPanel === 'graph' && <ReadingGraph onView={() => onToast('已打开关联论文详情')} />}
         </div>
-        {rightPanel === 'ai' && <div className="reading-ai-question"><label htmlFor="reading-ai-question"><img src="/assets/reading/ai.svg" alt="" />AI问答</label><div><input id="reading-ai-question" value={aiQuestion} onChange={(event) => setAiQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submitAiQuestion() }} placeholder="向AI提问关于这篇论文..." /><button type="button" aria-label="提交问题" disabled={!aiQuestion.trim()} onClick={submitAiQuestion}><span className="reading-submit-arrow" aria-hidden="true" /></button></div></div>}
+        {rightPanel === 'ai' && (
+          <div className="reading-ai-question">
+            <label htmlFor="reading-ai-question"><img src="/assets/reading/ai.svg" alt="" />AI问答</label>
+            <div>
+              <input
+                id="reading-ai-question"
+                value={aiQuestion}
+                onChange={(event) => setAiQuestion(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.nativeEvent.isComposing) submitAiQuestion()
+                }}
+                placeholder="向AI提问关于这篇论文..."
+              />
+              {aiQuestion.trim() && (
+                <button type="button" aria-label="提交问题" onClick={submitAiQuestion}>
+                  <span className="reading-submit-arrow" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </aside>
 
       <footer className="reading-footer">

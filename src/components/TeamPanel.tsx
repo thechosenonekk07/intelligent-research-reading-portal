@@ -229,7 +229,7 @@ export function TeamPanel({
         <div className="panel-content members-panel">
           <div className="panel-heading-row">
             <strong>团队成员·{members.length}人</strong>
-            <button type="button" className="primary-link" onClick={onInvite}><img src="/assets/nav-team.svg" alt="" />邀请</button>
+            <button type="button" className="primary-link" onClick={onInvite}><img src="/assets/figma/invite-member.svg" alt="" />邀请</button>
           </div>
           <div className="member-list">
             {members.map((member) => (
