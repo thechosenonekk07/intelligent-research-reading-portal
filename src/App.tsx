@@ -520,7 +520,15 @@ export default function App() {
       )}
 
       {activeProduct === 'research' && modal === 'new-team' && teamMemberPickerOpen && (
-        <Modal title="选择成员" onClose={cancelTeamMemberPicker} onSubmit={submitTeamMemberPicker} confirmText="确定" wide tall>
+        <Modal
+          title="选择成员"
+          onClose={cancelTeamMemberPicker}
+          onSubmit={submitTeamMemberPicker}
+          confirmText="确定"
+          confirmDisabled={teamInviteDraftSelection.length === 0}
+          wide
+          tall
+        >
           <MemberPicker
             candidates={memberCandidates}
             selectedIds={teamInviteDraftSelection}
@@ -538,7 +546,15 @@ export default function App() {
       )}
 
       {activeProduct === 'research' && modal === 'invite-member' && !teamMemberPickerOpen && (
-        <Modal title="选择成员" onClose={() => setModal(null)} onSubmit={submitInvite} confirmText="确定" wide tall>
+        <Modal
+          title="选择成员"
+          onClose={() => setModal(null)}
+          onSubmit={submitInvite}
+          confirmText="确定"
+          confirmDisabled={inviteSelection.length === 0}
+          wide
+          tall
+        >
           <MemberPicker
             candidates={memberCandidates}
             selectedIds={inviteSelection}

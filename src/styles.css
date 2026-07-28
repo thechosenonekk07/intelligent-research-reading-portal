@@ -2063,7 +2063,21 @@ label:focus-within {
 .modal-card--tall .modal-body {
   min-height: 0;
   flex: 1 1 auto;
+  max-height: none;
+  overflow: hidden;
   padding: 0;
+}
+
+.modal-card--wide.modal-card--tall .modal-footer {
+  margin-top: 24px;
+  padding-right: 16px;
+}
+
+.modal-card--tall .modal-footer .button {
+  width: 60px;
+  min-width: 60px;
+  padding-right: 15px;
+  padding-left: 15px;
 }
 
 .modal-header {
@@ -2457,7 +2471,7 @@ label:focus-within {
 
 .member-selector {
   display: grid;
-  height: 598px;
+  height: 100%;
   min-height: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   overflow: hidden;
@@ -2476,17 +2490,22 @@ label:focus-within {
 }
 
 .member-search {
-  width: calc(100% - 24px);
-  margin: 12px 12px 0;
+  width: calc(100% - 23px);
+  margin: 11px 12px 0 11px;
 }
 
 .member-selector h3 {
   height: 22px;
-  margin: 12px 16px 8px;
+  margin: 12px 15px 8px;
   color: var(--text-1);
   font-size: 14px;
   font-weight: 500;
   line-height: 22px;
+}
+
+.member-selector-selected h3 {
+  margin-top: 16px;
+  margin-bottom: 12px;
 }
 
 .member-selector h3 b {
@@ -2501,14 +2520,18 @@ label:focus-within {
 }
 
 .candidate-list {
+  display: flex;
   height: calc(100% - 86px);
-  padding: 0 16px 12px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 15px 12px;
 }
 
 .candidate-row {
   display: grid;
   width: 100%;
   height: 42px;
+  flex: 0 0 42px;
   grid-template-columns: 20px 32px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
@@ -2594,13 +2617,17 @@ label:focus-within {
 }
 
 .selected-member-list {
+  display: flex;
   height: calc(100% - 42px);
-  padding: 0 16px 12px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 15px 12px;
 }
 
 .selected-member-list article {
   display: grid;
-  height: 50px;
+  height: 42px;
+  flex: 0 0 42px;
   grid-template-columns: 32px minmax(0, 1fr) 50px;
   align-items: center;
   gap: 8px;
@@ -2609,16 +2636,19 @@ label:focus-within {
 .selected-member-controls {
   display: flex;
   width: 50px;
+  height: 42px;
   min-width: 50px;
   flex-direction: column;
   align-items: flex-end;
   gap: 6px;
+  justify-self: end;
 }
 
 .selected-member-remove {
   display: grid;
   width: 16px;
   height: 16px;
+  flex: 0 0 16px;
   place-items: center;
   border-radius: 3px;
 }
@@ -2637,23 +2667,39 @@ label:focus-within {
 .selected-member-role-wrap {
   position: relative;
   width: 50px;
+  height: 20px;
+  min-width: 50px;
+  flex: 0 0 20px;
+  line-height: 0;
 }
 
 .selected-member-role {
   display: inline-flex;
   width: 50px;
+  min-width: 50px;
   height: 20px;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 2px;
   padding: 0;
   color: var(--text-3);
   font-size: 12px;
   line-height: 20px;
+  white-space: nowrap;
+  word-break: keep-all;
+  writing-mode: horizontal-tb;
 }
 
 .selected-member-role:hover,
 .selected-member-role:focus-visible {
   color: var(--primary);
+}
+
+.selected-member-role-label {
+  width: 36px;
+  flex: 0 0 36px;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 
 .selected-member-role-chevron {
@@ -2680,22 +2726,31 @@ label:focus-within {
   top: 22px;
   right: 0;
   display: flex;
-  width: 80px;
+  width: 62px;
   flex-direction: column;
-  padding: 4px;
+  gap: 2px;
+  padding: 8px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: #fff;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
+.selected-member-role-menu.is-up {
+  top: auto;
+  bottom: 22px;
+}
+
 .selected-member-role-menu button {
-  width: 70px;
-  height: 30px;
-  border-radius: 3px;
-  color: var(--text-2);
+  width: 46px;
+  height: 28px;
+  padding: 4px 0;
+  border-radius: 4px;
+  color: var(--text-1);
   font-size: 12px;
+  line-height: 20px;
   text-align: center;
+  white-space: nowrap;
 }
 
 .selected-member-role-menu button:hover,
@@ -2706,6 +2761,7 @@ label:focus-within {
 .selected-member-role-menu button.is-current {
   color: var(--primary);
   background: var(--primary-soft);
+  font-weight: 500;
 }
 
 .import-progress {
