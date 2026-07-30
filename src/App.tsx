@@ -43,6 +43,7 @@ const defaultRoles = (ids: string[]): Record<string, CandidateRole> => Object.fr
 export default function App() {
   const [activeProduct, setActiveProduct] = useState<'research' | 'reading'>('research')
   const [activeSection, setActiveSection] = useState<Section>('workbench')
+  const [teamTreeExpanded, setTeamTreeExpanded] = useState(false)
   const [workbenchTab, setWorkbenchTab] = useState<WorkbenchTab>('recent')
   const [teamPanelTab, setTeamPanelTab] = useState<TeamPanelTab>('todo')
   const [documents, setDocuments] = useState<ResearchDocument[]>(initialDocuments)
@@ -87,8 +88,17 @@ export default function App() {
 
   const selectSection = (section: Section) => {
     setActiveSection(section)
+    if (section === 'team') setTeamTreeExpanded(true)
     setOpenFolderName(null)
     setPage(1)
+  }
+
+  const toggleTeamTree = () => {
+    if (activeSection !== 'team') {
+      selectSection('team')
+      return
+    }
+    setTeamTreeExpanded((expanded) => !expanded)
   }
 
   const visibleDocuments = useMemo(() => {
@@ -310,8 +320,10 @@ export default function App() {
             activeSection={activeSection}
             activeTeam={activeTeam}
             teamNames={teamNames}
+            teamTreeExpanded={teamTreeExpanded}
             onSectionSelect={selectSection}
-            onTeamSelect={(team) => { setActiveTeam(team); setOpenFolderName(null) }}
+            onTeamTreeToggle={toggleTeamTree}
+            onTeamSelect={(team) => { setActiveTeam(team); setTeamTreeExpanded(true); setOpenFolderName(null) }}
             onNewTeam={() => {
               setTeamName('')
               setTeamInviteSelection([])

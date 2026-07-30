@@ -230,6 +230,7 @@ export function ReadingReader({
   const [leftOverlayLayout, setLeftOverlayLayout] = useState(() => window.matchMedia('(max-width: 900px)').matches)
   const paperRef = useRef<HTMLElement>(null)
   const paperScrollRef = useRef<HTMLDivElement>(null)
+  const readingFrameRef = useRef<HTMLElement>(null)
   const canvasRef = useRef<HTMLElement>(null)
   const noteImageInputRef = useRef<HTMLInputElement>(null)
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null)
@@ -241,6 +242,11 @@ export function ReadingReader({
   const screenshotPendingPointRef = useRef<ScreenshotPointer | null>(null)
   const screenshotAnimationFrameRef = useRef<number | null>(null)
   const pageSyncAnimationFrameRef = useRef<number | null>(null)
+  const zoomInputAnimationFrameRef = useRef<number | null>(null)
+  const zoomRestoreAnimationFrameRef = useRef<number | null>(null)
+  const pendingZoomRef = useRef<number | null>(null)
+  const suppressPageSyncRef = useRef(false)
+  const fullscreenFallbackRef = useRef(false)
   const screenshotResizeRef = useRef<{ handle: CropHandle; startX: number; startY: number; rect: CropRect } | null>(null)
   const noteRangeHandledRef = useRef(false)
   const notePointerStartRef = useRef<{ sectionTitle: string; index: number; x: number; y: number } | null>(null)
@@ -265,6 +271,30 @@ export function ReadingReader({
   useEffect(() => () => {
     if (screenshotAnimationFrameRef.current != null) window.cancelAnimationFrame(screenshotAnimationFrameRef.current)
     if (pageSyncAnimationFrameRef.current != null) window.cancelAnimationFrame(pageSyncAnimationFrameRef.current)
+    if (zoomInputAnimationFrameRef.current != null) window.cancelAnimationFrame(zoomInputAnimationFrameRef.current)
+    if (zoomRestoreAnimationFrameRef.current != null) window.cancelAnimationFrame(zoomRestoreAnimationFrameRef.current)
+  }, [])
+
+  useEffect(() => {
+    const syncFullscreenState = () => {
+      if (document.fullscreenElement === readingFrameRef.current) {
+        fullscreenFallbackRef.current = false
+        setMaximized(true)
+      } else if (!fullscreenFallbackRef.current) {
+        setMaximized(false)
+      }
+    }
+    const closeFallbackFullscreen = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !fullscreenFallbackRef.current) return
+      fullscreenFallbackRef.current = false
+      setMaximized(false)
+    }
+    document.addEventListener('fullscreenchange', syncFullscreenState)
+    document.addEventListener('keydown', closeFallbackFullscreen)
+    return () => {
+      document.removeEventListener('fullscreenchange', syncFullscreenState)
+      document.removeEventListener('keydown', closeFallbackFullscreen)
+    }
   }, [])
 
   useEffect(() => {
@@ -319,7 +349,45 @@ export function ReadingReader({
     })
   }
 
+  const applyZoom = (requestedZoom: number) => {
+    const nextZoom = Math.min(100, Math.max(25, Math.round(requestedZoom / 5) * 5))
+    if (nextZoom === zoom) return
+    const scroller = paperScrollRef.current
+    const horizontalCenter = scroller && scroller.scrollWidth > 0
+      ? (scroller.scrollLeft + scroller.clientWidth / 2) / scroller.scrollWidth
+      : 0.5
+    const verticalCenter = scroller && scroller.scrollHeight > 0
+      ? (scroller.scrollTop + scroller.clientHeight / 2) / scroller.scrollHeight
+      : 0
+    suppressPageSyncRef.current = true
+    setZoom(nextZoom)
+    if (zoomRestoreAnimationFrameRef.current != null) window.cancelAnimationFrame(zoomRestoreAnimationFrameRef.current)
+    zoomRestoreAnimationFrameRef.current = window.requestAnimationFrame(() => {
+      zoomRestoreAnimationFrameRef.current = null
+      const updatedScroller = paperScrollRef.current
+      if (updatedScroller) {
+        updatedScroller.scrollLeft = Math.max(0, horizontalCenter * updatedScroller.scrollWidth - updatedScroller.clientWidth / 2)
+        updatedScroller.scrollTop = Math.max(0, verticalCenter * updatedScroller.scrollHeight - updatedScroller.clientHeight / 2)
+      }
+      window.requestAnimationFrame(() => {
+        suppressPageSyncRef.current = false
+        syncPageFromPaperScroll()
+      })
+    })
+  }
+
+  const scheduleZoom = (requestedZoom: number) => {
+    pendingZoomRef.current = requestedZoom
+    if (zoomInputAnimationFrameRef.current != null) return
+    zoomInputAnimationFrameRef.current = window.requestAnimationFrame(() => {
+      zoomInputAnimationFrameRef.current = null
+      if (pendingZoomRef.current != null) applyZoom(pendingZoomRef.current)
+      pendingZoomRef.current = null
+    })
+  }
+
   const syncPageFromPaperScroll = () => {
+    if (suppressPageSyncRef.current) return
     if (contextAction === 'highlight') {
       setContextAction(null)
       setColorMenuOpen(false)
@@ -333,6 +401,28 @@ export function ReadingReader({
       const nextPage = availableScroll === 0 ? 1 : Math.round((scroller.scrollTop / availableScroll) * (totalPages - 1)) + 1
       setPage((current) => current === nextPage ? current : nextPage)
     })
+  }
+
+  const toggleReaderFullscreen = async () => {
+    const frame = readingFrameRef.current
+    if (!frame) return
+    if (fullscreenFallbackRef.current) {
+      fullscreenFallbackRef.current = false
+      setMaximized(false)
+      return
+    }
+    if (!frame.requestFullscreen) {
+      fullscreenFallbackRef.current = true
+      setMaximized(true)
+      return
+    }
+    try {
+      if (document.fullscreenElement === frame) await document.exitFullscreen()
+      else await frame.requestFullscreen()
+    } catch {
+      fullscreenFallbackRef.current = true
+      setMaximized(true)
+    }
   }
 
   const jumpToSection = (sectionTitle: string) => {
@@ -1002,7 +1092,7 @@ export function ReadingReader({
   }, [activeTool, colorMenuOpen, contextAction, documentMenuOpen, locatedResult, mobileInsightsOpen, mobileLeftOpen, noteDetailId, noteEditorExpanded, searchModeOpen, searchOpen, translatedResult])
 
   return (
-    <section className={`reading-frame${maximized ? ' reading-frame--maximized' : ''}${editingNoteId != null && leftPanel === 'notes' && noteEditorExpanded ? ' reading-frame--notes-expanded' : ''}${activeTool === 'screenshot' ? ' reading-frame--screenshot-armed' : ''}`} aria-label="智能阅读器">
+    <section ref={readingFrameRef} className={`reading-frame${maximized ? ' reading-frame--maximized' : ''}${editingNoteId != null && leftPanel === 'notes' && noteEditorExpanded ? ' reading-frame--notes-expanded' : ''}${activeTool === 'screenshot' ? ' reading-frame--screenshot-armed' : ''}`} aria-label="智能阅读器">
       <header className="reading-document-header">
         <div className="reading-document-picker">
           <button
@@ -1333,10 +1423,21 @@ export function ReadingReader({
         </div>
         <div className="reading-zoom-controls">
           <span>{zoom}%<i className="reading-inline-chevron" /></span>
-          <button type="button" aria-label="缩小" onClick={() => setZoom((current) => Math.max(25, current - 5))}><i className="reading-minus-icon" /></button>
-          <input type="range" min="25" max="100" step="5" value={zoom} aria-label="页面缩放" onChange={(event) => setZoom(Number(event.target.value))} />
-          <button type="button" aria-label="放大" onClick={() => setZoom((current) => Math.min(100, current + 5))}><span className="icon-plus" aria-hidden="true" /></button>
-          <button type="button" aria-label={maximized ? '退出全屏' : '全屏'} onClick={() => setMaximized((current) => !current)}><img src="/assets/reading/fullscreen.svg" alt="" /></button>
+          <div className="reading-zoom-slider">
+            <button type="button" aria-label="缩小" disabled={zoom === 25} onClick={() => applyZoom(zoom - 5)}><i className="reading-minus-icon" /></button>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={zoom}
+              aria-label="页面缩放"
+              style={{ '--zoom-progress': `${zoom}%` } as CSSProperties}
+              onChange={(event) => scheduleZoom(Number(event.target.value))}
+            />
+            <button type="button" aria-label="放大" disabled={zoom === 100} onClick={() => applyZoom(zoom + 5)}><i className="reading-plus-icon" /></button>
+          </div>
+          <button className="reading-fullscreen-button" type="button" aria-label={maximized ? '退出全屏' : '全屏'} onClick={() => void toggleReaderFullscreen()}><img src="/assets/reading/fullscreen.svg" alt="" /></button>
         </div>
       </footer>
     </section>

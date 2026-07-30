@@ -319,7 +319,7 @@ label:focus-within {
 .sidebar-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
 .sidebar-item {
@@ -381,6 +381,11 @@ label:focus-within {
 .sidebar-parent-row:hover .sidebar-team-add,
 .sidebar-team-add:focus-visible {
   opacity: 1;
+  pointer-events: auto;
+}
+
+.sidebar-team-add {
+  pointer-events: none;
 }
 
 .sidebar-team-add span,
@@ -398,8 +403,8 @@ label:focus-within {
 
 .sidebar-chevron {
   display: block;
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
   transform: rotate(-90deg);
   transition: transform 150ms ease;
 }
@@ -408,10 +413,24 @@ label:focus-within {
   transform: rotate(0deg);
 }
 
+.team-tree-disclosure {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 150ms ease, opacity 120ms ease;
+}
+
+.team-tree-disclosure.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
 .team-tree {
   display: flex;
+  min-height: 0;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+  overflow: hidden;
 }
 
 .main-pane {
@@ -942,7 +961,9 @@ label:focus-within {
 }
 
 .folder-card.is-selected {
+  z-index: 1;
   border-color: var(--primary);
+  transform: none;
 }
 
 .folder-open {
@@ -961,6 +982,10 @@ label:focus-within {
   border-color: #94bfff;
   box-shadow: 0 4px 12px rgba(22, 93, 255, 0.08);
   transform: translateY(-1px);
+}
+
+.folder-card.is-selected:hover {
+  transform: none;
 }
 
 .folder-card img {
@@ -1022,12 +1047,9 @@ label:focus-within {
 }
 
 .folder-menu {
-  position: absolute;
-  z-index: 8;
-  top: 38px;
-  right: -64px;
   display: flex;
-  width: 96px;
+  width: 94px;
+  height: 140px;
   flex-direction: column;
   gap: 2px;
   padding: 8px;
@@ -1037,12 +1059,19 @@ label:focus-within {
   box-shadow: 0 2px 6px rgba(91, 86, 110, 0.12);
 }
 
+.folder-menu--portal {
+  position: fixed;
+  z-index: 240;
+}
+
 .folder-menu button {
   width: 78px;
   height: 40px;
   padding: 9px 12px;
-  border-radius: 3px;
-  text-align: left;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 22px;
+  text-align: center;
 }
 
 .folder-menu button:hover {
@@ -3002,7 +3031,7 @@ label:focus-within {
   }
 
   .sidebar-chevron,
-  .team-tree {
+  .team-tree-disclosure {
     display: none;
   }
 

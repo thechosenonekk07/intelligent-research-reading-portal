@@ -64,7 +64,9 @@ interface SidebarProps {
   activeSection: Section
   activeTeam: string
   teamNames: string[]
+  teamTreeExpanded: boolean
   onSectionSelect: (section: Section) => void
+  onTeamTreeToggle: () => void
   onTeamSelect: (team: string) => void
   onNewTeam: () => void
 }
@@ -80,7 +82,9 @@ export function Sidebar({
   activeSection,
   activeTeam,
   teamNames,
+  teamTreeExpanded,
   onSectionSelect,
+  onTeamTreeToggle,
   onTeamSelect,
   onNewTeam,
 }: SidebarProps) {
@@ -93,26 +97,35 @@ export function Sidebar({
               <button
                 type="button"
                 className={`sidebar-item${activeSection === item.section && item.section !== 'team' ? ' is-active' : ''}${activeSection === item.section && item.section === 'team' ? ' is-parent-active' : ''}`}
-                onClick={() => onSectionSelect(item.section)}
+                onClick={() => item.section === 'team' ? onTeamTreeToggle() : onSectionSelect(item.section)}
                 aria-current={activeSection === item.section ? 'page' : undefined}
+                aria-expanded={item.section === 'team' ? teamTreeExpanded : undefined}
+                aria-controls={item.section === 'team' ? 'team-space-tree' : undefined}
               >
                 <span>{item.label}</span>
-                {item.section === 'team' && <img className={`sidebar-chevron${activeSection === 'team' ? ' is-open' : ''}`} src="/assets/direction-down.svg" alt="" />}
+                {item.section === 'team' && <img className={`sidebar-chevron${teamTreeExpanded ? ' is-open' : ''}`} src="/assets/direction-down.svg" alt="" />}
               </button>
               {item.section === 'team' && <button type="button" className="sidebar-team-add" aria-label="新增团队空间" onClick={onNewTeam}><span aria-hidden="true" /></button>}
             </div>
-            {item.section === 'team' && activeSection === 'team' && (
-              <div className="team-tree">
-                {teamNames.map((team) => (
-                  <button
-                    type="button"
-                    key={team}
-                    className={`sidebar-item sidebar-item--child${activeTeam === team ? ' is-active' : ''}`}
-                    onClick={() => onTeamSelect(team)}
-                  >
-                    {team}
-                  </button>
-                ))}
+            {item.section === 'team' && (
+              <div
+                id="team-space-tree"
+                className={`team-tree-disclosure${teamTreeExpanded ? ' is-open' : ''}`}
+                aria-hidden={!teamTreeExpanded}
+              >
+                <div className="team-tree">
+                  {teamNames.map((team) => (
+                    <button
+                      type="button"
+                      key={team}
+                      tabIndex={teamTreeExpanded ? undefined : -1}
+                      className={`sidebar-item sidebar-item--child${activeTeam === team ? ' is-active' : ''}`}
+                      onClick={() => onTeamSelect(team)}
+                    >
+                      {team}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>

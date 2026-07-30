@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { FolderItem, ResearchDocument } from '../types'
 import { DocumentTable } from './DocumentTable'
 
@@ -49,15 +50,71 @@ export function SpaceView({
 }: SpaceViewProps) {
   const label = mode === 'personal' ? '我的空间' : teamName ?? 'AI研究团队'
   const [menuFolderId, setMenuFolderId] = useState<number | null>(null)
+  const [menuPosition, setMenuPosition] = useState<{ left: number; top: number } | null>(null)
   const [renamingFolderId, setRenamingFolderId] = useState<number | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const menuTriggerRefs = useRef(new Map<number, HTMLButtonElement>())
+
+  const closeFolderMenu = (restoreFocus = false) => {
+    const trigger = menuFolderId == null ? null : menuTriggerRefs.current.get(menuFolderId)
+    setMenuFolderId(null)
+    setMenuPosition(null)
+    if (restoreFocus) window.requestAnimationFrame(() => trigger?.focus())
+  }
 
   useEffect(() => {
     if (menuFolderId === null) return
-    const closeMenu = () => setMenuFolderId(null)
-    window.addEventListener('click', closeMenu)
-    return () => window.removeEventListener('click', closeMenu)
+    const trigger = menuTriggerRefs.current.get(menuFolderId)
+    const closeFromOutside = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (menuRef.current?.contains(target) || trigger?.contains(target)) return
+      closeFolderMenu()
+    }
+    const closeFromKeyboard = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      closeFolderMenu(true)
+    }
+    const closeFromViewportChange = () => closeFolderMenu()
+    document.addEventListener('pointerdown', closeFromOutside, true)
+    document.addEventListener('keydown', closeFromKeyboard)
+    window.addEventListener('resize', closeFromViewportChange)
+    window.addEventListener('scroll', closeFromViewportChange, true)
+    return () => {
+      document.removeEventListener('pointerdown', closeFromOutside, true)
+      document.removeEventListener('keydown', closeFromKeyboard)
+      window.removeEventListener('resize', closeFromViewportChange)
+      window.removeEventListener('scroll', closeFromViewportChange, true)
+    }
   }, [menuFolderId])
+
+  useEffect(() => {
+    setMenuFolderId(null)
+    setMenuPosition(null)
+  }, [mode, teamName, openFolderName])
+
+  const toggleFolderMenu = (folderId: number, trigger: HTMLButtonElement) => {
+    if (menuFolderId === folderId) {
+      closeFolderMenu()
+      return
+    }
+    const rect = trigger.getBoundingClientRect()
+    const menuWidth = 94
+    const menuHeight = 140
+    const viewportGap = 8
+    const anchorGap = 10
+    const left = Math.min(
+      Math.max(viewportGap, rect.left),
+      Math.max(viewportGap, window.innerWidth - menuWidth - viewportGap),
+    )
+    const preferredTop = rect.bottom + anchorGap
+    const top = preferredTop + menuHeight <= window.innerHeight - viewportGap
+      ? preferredTop
+      : Math.max(viewportGap, rect.top - anchorGap - menuHeight)
+    setMenuPosition({ left, top })
+    setMenuFolderId(folderId)
+  }
 
   const finishRename = (folder: FolderItem) => {
     const nextName = renameValue.trim()
@@ -130,17 +187,18 @@ export function SpaceView({
                   <button
                     type="button"
                     className="folder-more"
+                    ref={(node) => {
+                      if (node) menuTriggerRefs.current.set(folder.id, node)
+                      else menuTriggerRefs.current.delete(folder.id)
+                    }}
                     aria-label={`${folder.name}更多操作`}
+                    aria-haspopup="menu"
                     aria-expanded={menuFolderId === folder.id}
-                    onClick={(event) => { event.stopPropagation(); setMenuFolderId((current) => current === folder.id ? null : folder.id) }}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      toggleFolderMenu(folder.id, event.currentTarget)
+                    }}
                   ><span className="more-dots" aria-hidden="true"><i /><i /><i /></span></button>
-                  {menuFolderId === folder.id && (
-                    <div className="folder-menu" role="menu" onClick={(event) => event.stopPropagation()}>
-                      <button type="button" role="menuitem" onClick={() => onOpenFolder(folder)}>查看</button>
-                      <button type="button" role="menuitem" onClick={() => { setRenamingFolderId(folder.id); setRenameValue(folder.name); setMenuFolderId(null) }}>重命名</button>
-                      <button type="button" role="menuitem" className="danger-link" onClick={() => { onDeleteFolder(folder.id); setMenuFolderId(null) }}>删除</button>
-                    </div>
-                  )}
                 </article>
               ))}
             </div>
@@ -165,6 +223,24 @@ export function SpaceView({
           />
         </section>}
       </div>
+      {menuFolderId != null && menuPosition && (() => {
+        const folder = folders.find((item) => item.id === menuFolderId)
+        if (!folder) return null
+        return createPortal(
+          <div
+            ref={menuRef}
+            className="folder-menu folder-menu--portal"
+            role="menu"
+            aria-label={`${folder.name}操作`}
+            style={{ left: menuPosition.left, top: menuPosition.top }}
+          >
+            <button type="button" role="menuitem" onClick={() => { closeFolderMenu(); onOpenFolder(folder) }}>查看</button>
+            <button type="button" role="menuitem" onClick={() => { closeFolderMenu(); setRenamingFolderId(folder.id); setRenameValue(folder.name) }}>重命名</button>
+            <button type="button" role="menuitem" className="danger-link" onClick={() => { closeFolderMenu(); onDeleteFolder(folder.id) }}>删除</button>
+          </div>,
+          document.body,
+        )
+      })()}
     </section>
   )
 }
