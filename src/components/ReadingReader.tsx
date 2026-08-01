@@ -1598,7 +1598,7 @@ export function ReadingReader({
             >
               <span>{zoom}%</span>
               <i className="reading-zoom-trigger-chevron" aria-hidden="true">
-                <img src="/assets/reading/zoom-chevron-vector.svg" alt="" />
+                <img src="./assets/reading/zoom-chevron-vector.svg" alt="" />
               </i>
             </button>
             {zoomMenuOpen && (
@@ -1624,7 +1624,7 @@ export function ReadingReader({
           </div>
           <div className="reading-zoom-slider">
             <button className="reading-zoom-step" type="button" aria-label="缩小" disabled={zoom === 25} onClick={() => applyZoom(zoom - 5)}>
-              <img src="/assets/reading/zoom-minus.svg" alt="" />
+              <img src="./assets/reading/zoom-minus.svg" alt="" />
             </button>
             <div
               className={`reading-zoom-range${zoomDragging ? ' is-dragging' : ''}`}
@@ -1645,13 +1645,13 @@ export function ReadingReader({
             >
               <span className="reading-zoom-track" aria-hidden="true" />
               <span className="reading-zoom-progress" aria-hidden="true" />
-              <span className="reading-zoom-thumb" aria-hidden="true"><img src="/assets/reading/zoom-thumb.svg" alt="" /></span>
+              <span className="reading-zoom-thumb" aria-hidden="true"><img src="./assets/reading/zoom-thumb.svg" alt="" /></span>
             </div>
             <button className="reading-zoom-step" type="button" aria-label="放大" disabled={zoom === 100} onClick={() => applyZoom(zoom + 5)}>
-              <img src="/assets/reading/zoom-plus.svg" alt="" />
+              <img src="./assets/reading/zoom-plus.svg" alt="" />
             </button>
           </div>
-          <button className="reading-fullscreen-button" type="button" aria-label={maximized ? '退出全屏' : '全屏'} onClick={() => void toggleReaderFullscreen()}><img src="/assets/reading/zoom-fullscreen.svg" alt="" /></button>
+          <button className="reading-fullscreen-button" type="button" aria-label={maximized ? '退出全屏' : '全屏'} onClick={() => void toggleReaderFullscreen()}><img src="./assets/reading/zoom-fullscreen.svg" alt="" /></button>
         </div>
       </footer>
     </section>
