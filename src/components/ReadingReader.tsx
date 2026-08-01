@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { articleSections, outlineGroups, type ReadingDocument, type ReadingNote } from '../readingData'
 
@@ -70,6 +70,7 @@ const aiSearchResults = [
 const aiSearchTargetSections = ['1.1.研究背景与意义', '2.1.原料制备', '2.2.表征手段', '3.1.材料形貌分析']
 
 const totalPages = 24
+const zoomPresets = [25, 50, 75, 100] as const
 const translatedExcerpt = 'Lithium-sulfur batteries are considered to be a promising new generation of energy storage systems due to their high theoretical specific capacity and energy density. However, during the actual charging and discharging process'
 const explainedExcerpt = '多硫化物穿梭效应是指锂硫电池充放电过程中，可溶性锂多硫化物在正负极之间反复迁移并发生副反应的现象。它会造成活性硫流失、锂负极腐蚀、容量衰减、库伦效率降低和自放电加剧，是限制锂硫电池商业化应用的核心问题之一。'
 const expandedNoteExcerpt = '多硫化物穿梭效应通常出现在锂硫电池中，是锂硫电池容量衰减、库伦效率低、自放电严重的重要原因之一。在放电阶段，正极硫被还原生成可溶性多硫化锂，这些中间产物溶入电解液后，在浓度梯度和电场作用下向锂负极迁移。到达负极后，它们可能与金属锂发生副反应，被进一步还原成短链多硫化物甚至 Li₂S / Li₂S₂，并沉积...全部'
@@ -190,6 +191,9 @@ export function ReadingReader({
   const [rightPanel, setRightPanel] = useState<InsightPanel>('ai')
   const [page, setPage] = useState(1)
   const [zoom, setZoom] = useState(50)
+  const [zoomMenuOpen, setZoomMenuOpen] = useState(false)
+  const [zoomMenuActiveIndex, setZoomMenuActiveIndex] = useState(1)
+  const [zoomDragging, setZoomDragging] = useState(false)
   const [thumbnailZoom, setThumbnailZoom] = useState(25)
   const [contextAction, setContextAction] = useState<ContextAction>(null)
   const [resultCards, setResultCards] = useState<ReadingResultCards>({
@@ -230,6 +234,7 @@ export function ReadingReader({
   const [leftOverlayLayout, setLeftOverlayLayout] = useState(() => window.matchMedia('(max-width: 900px)').matches)
   const paperRef = useRef<HTMLElement>(null)
   const paperScrollRef = useRef<HTMLDivElement>(null)
+  const paperZoomStageRef = useRef<HTMLDivElement>(null)
   const readingFrameRef = useRef<HTMLElement>(null)
   const canvasRef = useRef<HTMLElement>(null)
   const noteImageInputRef = useRef<HTMLInputElement>(null)
@@ -244,6 +249,13 @@ export function ReadingReader({
   const pageSyncAnimationFrameRef = useRef<number | null>(null)
   const zoomInputAnimationFrameRef = useRef<number | null>(null)
   const zoomRestoreAnimationFrameRef = useRef<number | null>(null)
+  const zoomRestoreUnlockAnimationFrameRef = useRef<number | null>(null)
+  const zoomTransactionRef = useRef(0)
+  const zoomValueRef = useRef(50)
+  const zoomPointerIdRef = useRef<number | null>(null)
+  const zoomSelectorRef = useRef<HTMLDivElement>(null)
+  const zoomTriggerRef = useRef<HTMLButtonElement>(null)
+  const zoomOptionRefs = useRef<Array<HTMLButtonElement | null>>([])
   const pendingZoomRef = useRef<number | null>(null)
   const suppressPageSyncRef = useRef(false)
   const fullscreenFallbackRef = useRef(false)
@@ -273,6 +285,7 @@ export function ReadingReader({
     if (pageSyncAnimationFrameRef.current != null) window.cancelAnimationFrame(pageSyncAnimationFrameRef.current)
     if (zoomInputAnimationFrameRef.current != null) window.cancelAnimationFrame(zoomInputAnimationFrameRef.current)
     if (zoomRestoreAnimationFrameRef.current != null) window.cancelAnimationFrame(zoomRestoreAnimationFrameRef.current)
+    if (zoomRestoreUnlockAnimationFrameRef.current != null) window.cancelAnimationFrame(zoomRestoreUnlockAnimationFrameRef.current)
   }, [])
 
   useEffect(() => {
@@ -349,29 +362,71 @@ export function ReadingReader({
     })
   }
 
+  const closeZoomMenu = (restoreFocus = false) => {
+    setZoomMenuOpen(false)
+    if (restoreFocus) window.requestAnimationFrame(() => zoomTriggerRef.current?.focus({ preventScroll: true }))
+  }
+
+  const openZoomMenu = () => {
+    const exactIndex = zoomPresets.findIndex((preset) => preset === zoomValueRef.current)
+    const nearestIndex = zoomPresets.reduce((bestIndex, preset, index) => (
+      Math.abs(preset - zoomValueRef.current) < Math.abs(zoomPresets[bestIndex] - zoomValueRef.current) ? index : bestIndex
+    ), 0)
+    setZoomMenuActiveIndex(exactIndex >= 0 ? exactIndex : nearestIndex)
+    setZoomMenuOpen(true)
+  }
+
+  const moveZoomMenuFocus = (nextIndex: number) => {
+    const normalizedIndex = (nextIndex + zoomPresets.length) % zoomPresets.length
+    setZoomMenuActiveIndex(normalizedIndex)
+    zoomOptionRefs.current[normalizedIndex]?.focus({ preventScroll: true })
+  }
+
   const applyZoom = (requestedZoom: number) => {
     const nextZoom = Math.min(100, Math.max(25, Math.round(requestedZoom / 5) * 5))
-    if (nextZoom === zoom) return
+    closeZoomMenu()
+    if (nextZoom === zoomValueRef.current) return
     const scroller = paperScrollRef.current
-    const horizontalCenter = scroller && scroller.scrollWidth > 0
-      ? (scroller.scrollLeft + scroller.clientWidth / 2) / scroller.scrollWidth
-      : 0.5
-    const verticalCenter = scroller && scroller.scrollHeight > 0
-      ? (scroller.scrollTop + scroller.clientHeight / 2) / scroller.scrollHeight
-      : 0
+    const stage = paperZoomStageRef.current
+    const scrollerBounds = scroller?.getBoundingClientRect()
+    const stageBounds = stage?.getBoundingClientRect()
+    const renderedScale = stageBounds && stageBounds.width > 0 ? stageBounds.width / 812 : zoomValueRef.current / 100
+    const viewportCenterX = scrollerBounds ? scrollerBounds.left + scrollerBounds.width / 2 : 0
+    const viewportCenterY = scrollerBounds ? scrollerBounds.top + scrollerBounds.height / 2 : 0
+    const paperAnchorX = stageBounds ? (viewportCenterX - stageBounds.left) / renderedScale : 406
+    const paperAnchorY = stageBounds ? (viewportCenterY - stageBounds.top) / renderedScale : 0
+    const transaction = zoomTransactionRef.current + 1
+    zoomTransactionRef.current = transaction
     suppressPageSyncRef.current = true
+    zoomValueRef.current = nextZoom
     setZoom(nextZoom)
     if (zoomRestoreAnimationFrameRef.current != null) window.cancelAnimationFrame(zoomRestoreAnimationFrameRef.current)
+    if (zoomRestoreUnlockAnimationFrameRef.current != null) window.cancelAnimationFrame(zoomRestoreUnlockAnimationFrameRef.current)
     zoomRestoreAnimationFrameRef.current = window.requestAnimationFrame(() => {
       zoomRestoreAnimationFrameRef.current = null
+      if (transaction !== zoomTransactionRef.current) return
       const updatedScroller = paperScrollRef.current
-      if (updatedScroller) {
-        updatedScroller.scrollLeft = Math.max(0, horizontalCenter * updatedScroller.scrollWidth - updatedScroller.clientWidth / 2)
-        updatedScroller.scrollTop = Math.max(0, verticalCenter * updatedScroller.scrollHeight - updatedScroller.clientHeight / 2)
+      const updatedStageBounds = paperZoomStageRef.current?.getBoundingClientRect()
+      const updatedScrollerBounds = updatedScroller?.getBoundingClientRect()
+      if (updatedScroller && updatedStageBounds && updatedScrollerBounds) {
+        const updatedScale = updatedStageBounds.width > 0 ? updatedStageBounds.width / 812 : nextZoom / 100
+        const updatedCenterX = updatedScrollerBounds.left + updatedScrollerBounds.width / 2
+        const updatedCenterY = updatedScrollerBounds.top + updatedScrollerBounds.height / 2
+        const horizontalDelta = updatedStageBounds.left + paperAnchorX * updatedScale - updatedCenterX
+        const verticalDelta = updatedStageBounds.top + paperAnchorY * updatedScale - updatedCenterY
+        updatedScroller.scrollLeft = Math.min(
+          Math.max(0, updatedScroller.scrollWidth - updatedScroller.clientWidth),
+          Math.max(0, updatedScroller.scrollLeft + horizontalDelta),
+        )
+        updatedScroller.scrollTop = Math.min(
+          Math.max(0, updatedScroller.scrollHeight - updatedScroller.clientHeight),
+          Math.max(0, updatedScroller.scrollTop + verticalDelta),
+        )
       }
-      window.requestAnimationFrame(() => {
+      zoomRestoreUnlockAnimationFrameRef.current = window.requestAnimationFrame(() => {
+        zoomRestoreUnlockAnimationFrameRef.current = null
+        if (transaction !== zoomTransactionRef.current) return
         suppressPageSyncRef.current = false
-        syncPageFromPaperScroll()
       })
     })
   }
@@ -385,6 +440,113 @@ export function ReadingReader({
       pendingZoomRef.current = null
     })
   }
+
+  const selectZoomPreset = (preset: number, restoreFocus = true) => {
+    applyZoom(preset)
+    closeZoomMenu(restoreFocus)
+  }
+
+  const handleZoomTriggerKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      if (!zoomMenuOpen) openZoomMenu()
+      window.requestAnimationFrame(() => zoomOptionRefs.current[zoomMenuActiveIndex]?.focus({ preventScroll: true }))
+      return
+    }
+    if (event.key === 'Escape' && zoomMenuOpen) {
+      event.preventDefault()
+      closeZoomMenu(true)
+    }
+  }
+
+  const handleZoomOptionKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      moveZoomMenuFocus(index + 1)
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      moveZoomMenuFocus(index - 1)
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      moveZoomMenuFocus(0)
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      moveZoomMenuFocus(zoomPresets.length - 1)
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      selectZoomPreset(zoomPresets[index])
+    } else if (event.key === 'Tab') {
+      setZoomMenuOpen(false)
+    }
+  }
+
+  const updateZoomFromPointer = (clientX: number, target: HTMLElement) => {
+    const bounds = target.getBoundingClientRect()
+    if (bounds.width <= 0) return
+    const visualPercent = ((clientX - bounds.left) / bounds.width) * 100
+    scheduleZoom(visualPercent)
+  }
+
+  const handleZoomRangePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    closeZoomMenu()
+    zoomPointerIdRef.current = event.pointerId
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setZoomDragging(true)
+    updateZoomFromPointer(event.clientX, event.currentTarget)
+  }
+
+  const handleZoomRangePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (zoomPointerIdRef.current !== event.pointerId) return
+    updateZoomFromPointer(event.clientX, event.currentTarget)
+  }
+
+  const finishZoomRangePointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (zoomPointerIdRef.current !== event.pointerId) return
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    zoomPointerIdRef.current = null
+    setZoomDragging(false)
+  }
+
+  const handleZoomRangeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const keySteps: Partial<Record<string, number>> = {
+      ArrowLeft: -5,
+      ArrowDown: -5,
+      ArrowRight: 5,
+      ArrowUp: 5,
+      PageDown: -10,
+      PageUp: 10,
+    }
+    if (event.key in keySteps) {
+      event.preventDefault()
+      applyZoom(zoomValueRef.current + (keySteps[event.key] ?? 0))
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      applyZoom(25)
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      applyZoom(100)
+    }
+  }
+
+  useEffect(() => {
+    if (!zoomMenuOpen) return
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      if (!zoomSelectorRef.current?.contains(event.target as Node)) setZoomMenuOpen(false)
+    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      closeZoomMenu(true)
+    }
+    document.addEventListener('pointerdown', handleOutsidePointerDown)
+    document.addEventListener('keydown', handleEscape)
+    window.requestAnimationFrame(() => zoomOptionRefs.current[zoomMenuActiveIndex]?.focus({ preventScroll: true }))
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsidePointerDown)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [zoomMenuActiveIndex, zoomMenuOpen])
 
   const syncPageFromPaperScroll = () => {
     if (suppressPageSyncRef.current) return
@@ -1246,7 +1408,7 @@ export function ReadingReader({
 
       <main className={`reading-canvas${activeTool === 'note' ? ' is-note-tool-active' : ''}${activeTool === 'screenshot' ? ' is-screenshot-tool-active' : ''}`} ref={canvasRef} onPointerDown={beginScreenshotDrag} onPointerMove={moveScreenshotPointer} onPointerUp={finishScreenshotDrag} onPointerCancel={cancelScreenshotDrag}>
         <div className="reading-paper-scroll" ref={paperScrollRef} onScroll={syncPageFromPaperScroll}>
-          <div className="reading-paper-zoom-stage" style={{ '--paper-scale': zoom / 100, width: 812 * zoom / 100, minHeight: 2246 * zoom / 100 } as CSSProperties}>
+          <div ref={paperZoomStageRef} className="reading-paper-zoom-stage" style={{ '--paper-scale': zoom / 100, width: 812 * zoom / 100, minHeight: 2246 * zoom / 100 } as CSSProperties}>
           <article
             className="reading-paper"
             ref={paperRef}
@@ -1422,22 +1584,74 @@ export function ReadingReader({
           <button type="button" className="reading-back-first" onClick={() => goToPage(1)}>回到第1页</button>
         </div>
         <div className="reading-zoom-controls">
-          <span>{zoom}%<i className="reading-inline-chevron" /></span>
-          <div className="reading-zoom-slider">
-            <button type="button" aria-label="缩小" disabled={zoom === 25} onClick={() => applyZoom(zoom - 5)}><i className="reading-minus-icon" /></button>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="5"
-              value={zoom}
-              aria-label="页面缩放"
-              style={{ '--zoom-progress': `${zoom}%` } as CSSProperties}
-              onChange={(event) => scheduleZoom(Number(event.target.value))}
-            />
-            <button type="button" aria-label="放大" disabled={zoom === 100} onClick={() => applyZoom(zoom + 5)}><i className="reading-plus-icon" /></button>
+          <div className="reading-zoom-selector" ref={zoomSelectorRef}>
+            <button
+              ref={zoomTriggerRef}
+              type="button"
+              className={`reading-zoom-trigger${zoomMenuOpen ? ' is-open' : ''}${zoom === 100 ? ' is-wide-value' : ''}`}
+              aria-label={`缩放比例，当前 ${zoom}%`}
+              aria-haspopup="listbox"
+              aria-expanded={zoomMenuOpen}
+              aria-controls="reading-zoom-menu"
+              onClick={() => zoomMenuOpen ? closeZoomMenu() : openZoomMenu()}
+              onKeyDown={handleZoomTriggerKeyDown}
+            >
+              <span>{zoom}%</span>
+              <i className="reading-zoom-trigger-chevron" aria-hidden="true">
+                <img src="/assets/reading/zoom-chevron-vector.svg" alt="" />
+              </i>
+            </button>
+            {zoomMenuOpen && (
+              <div className="reading-zoom-menu" id="reading-zoom-menu" role="listbox" aria-label="选择缩放比例">
+                {zoomPresets.map((preset, index) => (
+                  <button
+                    ref={(node) => { zoomOptionRefs.current[index] = node }}
+                    type="button"
+                    role="option"
+                    aria-selected={zoom === preset}
+                    className={zoom === preset ? 'is-active' : ''}
+                    tabIndex={index === zoomMenuActiveIndex ? 0 : -1}
+                    key={preset}
+                    onFocus={() => setZoomMenuActiveIndex(index)}
+                    onClick={() => selectZoomPreset(preset, false)}
+                    onKeyDown={(event) => handleZoomOptionKeyDown(event, index)}
+                  >
+                    {preset}%
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <button className="reading-fullscreen-button" type="button" aria-label={maximized ? '退出全屏' : '全屏'} onClick={() => void toggleReaderFullscreen()}><img src="/assets/reading/fullscreen.svg" alt="" /></button>
+          <div className="reading-zoom-slider">
+            <button className="reading-zoom-step" type="button" aria-label="缩小" disabled={zoom === 25} onClick={() => applyZoom(zoom - 5)}>
+              <img src="/assets/reading/zoom-minus.svg" alt="" />
+            </button>
+            <div
+              className={`reading-zoom-range${zoomDragging ? ' is-dragging' : ''}`}
+              role="slider"
+              tabIndex={0}
+              aria-label="页面缩放"
+              aria-valuemin={25}
+              aria-valuemax={100}
+              aria-valuenow={zoom}
+              aria-valuetext={`${zoom}%`}
+              style={{ '--zoom-progress': `${zoom}%` } as CSSProperties}
+              onPointerDown={handleZoomRangePointerDown}
+              onPointerMove={handleZoomRangePointerMove}
+              onPointerUp={finishZoomRangePointer}
+              onPointerCancel={finishZoomRangePointer}
+              onKeyDown={handleZoomRangeKeyDown}
+              onBlur={() => setZoomDragging(false)}
+            >
+              <span className="reading-zoom-track" aria-hidden="true" />
+              <span className="reading-zoom-progress" aria-hidden="true" />
+              <span className="reading-zoom-thumb" aria-hidden="true"><img src="/assets/reading/zoom-thumb.svg" alt="" /></span>
+            </div>
+            <button className="reading-zoom-step" type="button" aria-label="放大" disabled={zoom === 100} onClick={() => applyZoom(zoom + 5)}>
+              <img src="/assets/reading/zoom-plus.svg" alt="" />
+            </button>
+          </div>
+          <button className="reading-fullscreen-button" type="button" aria-label={maximized ? '退出全屏' : '全屏'} onClick={() => void toggleReaderFullscreen()}><img src="/assets/reading/zoom-fullscreen.svg" alt="" /></button>
         </div>
       </footer>
     </section>
