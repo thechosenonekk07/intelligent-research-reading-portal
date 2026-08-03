@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { createPortal } from 'react-dom'
 import type { ReadingDocument } from '../readingData'
 
 interface ReadingLibraryProps {
@@ -8,16 +9,18 @@ interface ReadingLibraryProps {
   onBack: () => void
   onUpload: () => void
   onToast: (message: string) => void
+  folders: string[]
+  onFoldersChange: (folders: string[]) => void
 }
 
 type LibrarySection = 'all' | 'favorites'
 type LibraryFilter = '全部' | '论文' | '专利' | '报告'
 
-const documentMeta: Record<number, { date: string; tag: Exclude<LibraryFilter, '全部'> }> = {
-  1: { date: '2026.07.09', tag: '论文' },
-  2: { date: '2026.07.08', tag: '专利' },
-  3: { date: '2026.07.07', tag: '报告' },
-  4: { date: '2026.07.06', tag: '论文' },
+const documentMeta: Record<number, { date: string; uploadedAt: string; editedAt: string; tag: Exclude<LibraryFilter, '全部'> }> = {
+  1: { date: '2026.07.09', uploadedAt: '2026-07-09T10:00:00', editedAt: '2026-07-10T15:30:00', tag: '论文' },
+  2: { date: '2026.07.08', uploadedAt: '2026-07-08T10:00:00', editedAt: '2026-07-11T09:20:00', tag: '专利' },
+  3: { date: '2026.07.07', uploadedAt: '2026-07-07T10:00:00', editedAt: '2026-07-09T16:10:00', tag: '报告' },
+  4: { date: '2026.07.06', uploadedAt: '2026-07-06T10:00:00', editedAt: '2026-07-12T11:45:00', tag: '论文' },
 }
 
 const libraryTagClass: Record<Exclude<LibraryFilter, '全部'>, string> = {
@@ -41,12 +44,80 @@ const trapDialogFocus = (event: ReactKeyboardEvent<HTMLElement>) => {
   }
 }
 
+interface OverflowLabelProps {
+  text: string
+  className?: string
+}
+
+interface TooltipPosition {
+  top: number
+  left: number
+  maxWidth: number
+  above: boolean
+}
+
+function OverflowLabel({ text, className = '' }: OverflowLabelProps) {
+  const labelRef = useRef<HTMLSpanElement>(null)
+  const [tooltip, setTooltip] = useState<TooltipPosition | null>(null)
+
+  const hideTooltip = () => setTooltip(null)
+  const showTooltip = () => {
+    const label = labelRef.current
+    if (!label || label.scrollWidth <= label.clientWidth + 1) return
+    const rect = label.getBoundingClientRect()
+    const maxWidth = Math.min(360, Math.max(180, Math.ceil(text.length * 14)))
+    const left = Math.min(Math.max(12, rect.left), Math.max(12, window.innerWidth - maxWidth - 12))
+    const above = rect.bottom + 64 > window.innerHeight
+    setTooltip({ top: above ? rect.top - 8 : rect.bottom + 8, left, maxWidth, above })
+  }
+
+  useEffect(() => {
+    const label = labelRef.current
+    const owner = label?.closest('button')
+    if (!label || !owner) return
+    owner.addEventListener('focus', showTooltip)
+    owner.addEventListener('blur', hideTooltip)
+    window.addEventListener('resize', hideTooltip)
+    window.addEventListener('scroll', hideTooltip, true)
+    const observer = new ResizeObserver(() => {
+      if (label.scrollWidth <= label.clientWidth + 1) hideTooltip()
+    })
+    observer.observe(label)
+    return () => {
+      owner.removeEventListener('focus', showTooltip)
+      owner.removeEventListener('blur', hideTooltip)
+      window.removeEventListener('resize', hideTooltip)
+      window.removeEventListener('scroll', hideTooltip, true)
+      observer.disconnect()
+    }
+  }, [text])
+
+  return (
+    <>
+      <span ref={labelRef} className={`reading-overflow-label${className ? ` ${className}` : ''}`} onPointerEnter={showTooltip} onPointerLeave={hideTooltip}>{text}</span>
+      {tooltip && createPortal(
+        <span
+          className={`reading-field-tooltip${tooltip.above ? ' is-above' : ''}`}
+          role="tooltip"
+          style={{ top: tooltip.top, left: tooltip.left, maxWidth: tooltip.maxWidth }}
+        >
+          {text}
+        </span>,
+        document.body,
+      )}
+    </>
+  )
+}
+
 export function ReadingLibrary({
   documents,
   onDocumentsChange,
   onOpenDocument,
   onBack,
   onUpload,
+  onToast,
+  folders,
+  onFoldersChange,
 }: ReadingLibraryProps) {
   const [section, setSection] = useState<LibrarySection>('all')
   const [filter, setFilter] = useState<LibraryFilter>('全部')
@@ -57,11 +128,11 @@ export function ReadingLibrary({
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<10 | 20>(10)
   const [pageSizeOpen, setPageSizeOpen] = useState(false)
-  const [folders, setFolders] = useState(['我的笔记库1', '我的笔记库2', '我的笔记库3'])
   const [activeFolder, setActiveFolder] = useState('我的笔记库1')
   const [expandedFolder, setExpandedFolder] = useState('我的笔记库1')
   const [newFolderOpen, setNewFolderOpen] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
+  const [newFolderError, setNewFolderError] = useState('')
   const [renamingFolder, setRenamingFolder] = useState<string | null>(null)
   const [renameFolderValue, setRenameFolderValue] = useState('')
   const [menuDocumentId, setMenuDocumentId] = useState<number | null>(null)
@@ -70,11 +141,59 @@ export function ReadingLibrary({
   const [moveSearch, setMoveSearch] = useState('')
   const [moveTab, setMoveTab] = useState<'全部' | '收藏'>('全部')
   const libraryRef = useRef<HTMLElement>(null)
+  const newFolderInputRef = useRef<HTMLInputElement>(null)
+  const newFolderCancelledRef = useRef(false)
+  const newFolderCommittedRef = useRef(false)
+  const sortTriggerRef = useRef<HTMLButtonElement>(null)
+  const sortOptionRefs = useRef<Array<HTMLButtonElement | null>>([])
+
+  const focusNewFolderInput = (select = false) => {
+    window.requestAnimationFrame(() => {
+      newFolderInputRef.current?.focus()
+      if (select) newFolderInputRef.current?.select()
+    })
+  }
+
+  const startNewFolder = () => {
+    if (section !== 'all') return
+    if (newFolderOpen) {
+      focusNewFolderInput()
+      return
+    }
+    newFolderCancelledRef.current = false
+    newFolderCommittedRef.current = false
+    setNewFolderName('')
+    setNewFolderError('')
+    setRenamingFolder(null)
+    setNewFolderOpen(true)
+  }
+
+  const cancelNewFolder = () => {
+    newFolderCancelledRef.current = true
+    setNewFolderOpen(false)
+    setNewFolderName('')
+    setNewFolderError('')
+  }
+
+  const closeSortMenu = (restoreFocus = false) => {
+    setSortOpen(false)
+    if (restoreFocus) window.requestAnimationFrame(() => sortTriggerRef.current?.focus())
+  }
+
+  const focusSortOption = (index: number) => {
+    window.requestAnimationFrame(() => sortOptionRefs.current[index]?.focus())
+  }
 
   useEffect(() => {
     const closeMenus = (event: MouseEvent) => {
-      if (!libraryRef.current?.contains(event.target as Node)) return
       const target = event.target as HTMLElement
+      if (!libraryRef.current?.contains(target)) {
+        setFilterOpen(false)
+        setSortOpen(false)
+        setPageSizeOpen(false)
+        setMenuDocumentId(null)
+        return
+      }
       if (!target.closest('.reading-library-filter-wrap') && !target.closest('.reading-library-sort-wrap') && !target.closest('.reading-library-page-size-wrap') && !target.closest('.reading-library-card-menu-wrap')) {
         setFilterOpen(false)
         setSortOpen(false)
@@ -90,46 +209,64 @@ export function ReadingLibrary({
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       setFilterOpen(false)
-      setSortOpen(false)
+      if (sortOpen) closeSortMenu(true)
       setPageSizeOpen(false)
       setMenuDocumentId(null)
       setMoveDocumentId(null)
-      setNewFolderOpen(false)
+      if (newFolderOpen) cancelNewFolder()
     }
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
-  }, [])
+  }, [newFolderOpen, sortOpen])
 
   const visibleDocuments = useMemo(() => {
     let list = section === 'favorites' ? documents.filter((document) => document.favorite) : documents
     if (filter !== '全部') list = list.filter((document) => (documentMeta[document.id]?.tag ?? '论文') === filter)
     const keyword = search.trim().toLowerCase()
     if (keyword) list = list.filter((document) => `${document.title}${document.authors}${document.journal}`.toLowerCase().includes(keyword))
-    return sortMode === '最近上传' ? list : list.slice().reverse()
+    const field = sortMode === '最近上传' ? 'uploadedAt' : 'editedAt'
+    return list.slice().sort((first, second) => {
+      const firstValue = documentMeta[first.id]?.[field] ?? ''
+      const secondValue = documentMeta[second.id]?.[field] ?? ''
+      return secondValue.localeCompare(firstValue) || first.title.localeCompare(second.title, 'zh-CN')
+    })
   }, [documents, filter, search, section, sortMode])
 
   const toggleFavorite = (documentId: number) => {
     onDocumentsChange(documents.map((document) => document.id === documentId ? { ...document, favorite: !document.favorite } : document))
   }
 
-  const commitNewFolder = () => {
+  const commitNewFolder = (origin: 'enter' | 'blur') => {
+    if (newFolderCancelledRef.current || newFolderCommittedRef.current) return
     const name = newFolderName.trim()
     if (!name) {
-      setNewFolderOpen(false)
+      if (origin === 'enter') {
+        setNewFolderError('请输入文件夹名称')
+        focusNewFolderInput()
+      } else {
+        cancelNewFolder()
+      }
       return
     }
-    setFolders((current) => [...current, name])
-    setActiveFolder(name)
-    setExpandedFolder(name)
+    if (folders.some((folder) => folder.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      setNewFolderError('文件夹名称已存在')
+      onToast('文件夹名称已存在')
+      focusNewFolderInput(true)
+      return
+    }
+    newFolderCommittedRef.current = true
+    onFoldersChange([name, ...folders])
     setNewFolderName('')
+    setNewFolderError('')
     setNewFolderOpen(false)
+    onToast(`已新建“${name}”`)
   }
 
   const commitFolderRename = () => {
     if (renamingFolder == null) return
     const value = renameFolderValue.trim()
     if (value && value !== renamingFolder) {
-      setFolders((current) => current.map((folder) => folder === renamingFolder ? value : folder))
+      onFoldersChange(folders.map((folder) => folder === renamingFolder ? value : folder))
       if (activeFolder === renamingFolder) setActiveFolder(value)
       if (expandedFolder === renamingFolder) setExpandedFolder(value)
     }
@@ -161,6 +298,32 @@ export function ReadingLibrary({
 
   const folderDocuments = documents.filter((document) => document.folder === activeFolder).slice(0, 4)
 
+  const selectSortMode = (mode: '最近上传' | '最后编辑') => {
+    setSortMode(mode)
+    closeSortMenu(true)
+  }
+
+  const handleSortTriggerKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    event.preventDefault()
+    setSortOpen(true)
+    focusSortOption(event.key === 'ArrowDown' ? 0 : 1)
+  }
+
+  const handleSortMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const activeIndex = sortOptionRefs.current.findIndex((option) => option === document.activeElement)
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closeSortMenu(true)
+      return
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    if (event.key === 'Home') focusSortOption(0)
+    else if (event.key === 'End') focusSortOption(1)
+    else focusSortOption(event.key === 'ArrowDown' ? (activeIndex + 1 + 2) % 2 : (activeIndex - 1 + 2) % 2)
+  }
+
   return (
     <section className="reading-library-frame" ref={libraryRef} aria-label="智能阅读库">
       <header className="reading-library-header">
@@ -174,27 +337,29 @@ export function ReadingLibrary({
           <button type="button" role="tab" aria-selected={section === 'favorites'} className={section === 'favorites' ? 'is-active' : ''} onClick={() => setSection('favorites')} aria-label="我的收藏"><img src="/assets/reading/library-favorite.svg" alt="" /></button>
         </div>
         <div className="reading-library-tree">
-          <div className="reading-library-tree-heading"><h2>{section === 'favorites' ? '收藏' : '笔记'}</h2><button type="button" aria-label="新建文件夹" onClick={() => setNewFolderOpen(true)}><img src="/assets/reading/create-folder.svg" alt="" /></button></div>
+          <div className="reading-library-tree-heading"><h2>{section === 'favorites' ? '收藏' : '笔记'}</h2>{section === 'all' && <button type="button" aria-label="新建文件夹" aria-expanded={newFolderOpen} onClick={startNewFolder}><img src="/assets/reading/create-folder.svg" alt="" /></button>}</div>
           {section === 'all' ? (
             <div className="reading-folder-tree">
-              {newFolderOpen && <div className="reading-new-folder-row"><img className="reading-folder-chevron is-collapsed" src="/assets/reading/library-folder.svg" alt="" /><input value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') commitNewFolder(); if (event.key === 'Escape') setNewFolderOpen(false) }} onBlur={commitNewFolder} autoFocus placeholder="" /></div>}
-              {folders.map((folder, index) => (
+              {newFolderOpen && <><div className={`reading-new-folder-row${newFolderError ? ' has-error' : ''}`}><img className="reading-folder-chevron is-collapsed" src="/assets/reading/library-folder.svg" alt="" /><img className="reading-folder-icon" src="/assets/reading/library-folder-shape.svg" alt="" /><input ref={newFolderInputRef} value={newFolderName} maxLength={30} aria-label="新文件夹名称" aria-invalid={Boolean(newFolderError)} aria-describedby={newFolderError ? 'reading-new-folder-error' : undefined} onChange={(event) => { setNewFolderName(event.target.value); if (newFolderError) setNewFolderError('') }} onKeyDown={(event) => { if (event.nativeEvent.isComposing) return; if (event.key === 'Enter') { event.preventDefault(); commitNewFolder('enter') } else if (event.key === 'Escape') { event.preventDefault(); cancelNewFolder() } }} onBlur={() => commitNewFolder('blur')} autoFocus /></div>{newFolderError && <span className="sr-only" role="alert" id="reading-new-folder-error">{newFolderError}</span>}</>}
+              {folders.map((folder) => (
                 <div key={folder}>
                   {renamingFolder === folder ? <div className="reading-new-folder-row is-renaming"><img className={`reading-folder-chevron${expandedFolder === folder ? '' : ' is-collapsed'}`} src="/assets/reading/library-folder.svg" alt="" /><input value={renameFolderValue} onChange={(event) => setRenameFolderValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') commitFolderRename(); if (event.key === 'Escape') setRenamingFolder(null) }} onBlur={commitFolderRename} autoFocus /></div> : <button
                     type="button"
                     className={`reading-folder-row${activeFolder === folder ? ' is-active' : ''}`}
+                    aria-expanded={expandedFolder === folder}
+                    aria-label={folder}
                     onClick={() => {
                       setActiveFolder(folder)
                       setExpandedFolder((current) => current === folder ? '' : folder)
                     }}
-                  ><img className={`reading-folder-chevron${expandedFolder === folder ? '' : ' is-collapsed'}`} src="/assets/reading/library-folder.svg" alt="" /><img className="reading-folder-icon" src="/assets/reading/library-folder-shape.svg" alt="" />{folder}</button>}
-                  {expandedFolder === folder && index === 0 && <div className="reading-folder-docs">{folderDocuments.map((document, documentIndex) => <button type="button" className={documentIndex === 0 ? 'is-active' : ''} key={document.id} onClick={() => onOpenDocument(document)}><img src={documentIndex === 0 ? '/assets/reading/notes-active.svg' : '/assets/reading/notes.svg'} alt="" />{document.title}</button>)}</div>}
+                  ><img className={`reading-folder-chevron${expandedFolder === folder ? '' : ' is-collapsed'}`} src="/assets/reading/library-folder.svg" alt="" /><img className="reading-folder-icon" src="/assets/reading/library-folder-shape.svg" alt="" /><OverflowLabel text={folder} /></button>}
+                  {expandedFolder === folder && <div className="reading-folder-docs">{folderDocuments.map((document, documentIndex) => <button type="button" aria-label={document.title} className={documentIndex === 0 ? 'is-active' : ''} key={document.id} onClick={() => onOpenDocument(document)}><img src={documentIndex === 0 ? '/assets/reading/notes-active.svg' : '/assets/reading/notes.svg'} alt="" /><OverflowLabel text={document.title} /></button>)}</div>}
                 </div>
               ))}
             </div>
           ) : (
             <div className="reading-folder-tree">
-              {['我的收藏1', '我的收藏2'].map((folder, index) => <div key={folder}><button type="button" className={`reading-folder-row${index === 0 ? ' is-active' : ''}`}><img className={`reading-folder-chevron${index === 0 ? '' : ' is-collapsed'}`} src="/assets/reading/library-folder.svg" alt="" /><img className="reading-folder-icon" src="/assets/reading/library-folder-shape.svg" alt="" />{folder}</button>{index === 0 && <div className="reading-folder-docs">{documents.filter((document) => document.favorite).map((document, documentIndex) => <button type="button" className={documentIndex === 0 ? 'is-active' : ''} key={document.id} onClick={() => onOpenDocument(document)}><img src={documentIndex === 0 ? '/assets/reading/notes-active.svg' : '/assets/reading/notes.svg'} alt="" />{document.title}</button>)}</div>}</div>)}
+              {['我的收藏1', '我的收藏2'].map((folder, index) => <div key={folder}><button type="button" aria-label={folder} className={`reading-folder-row${index === 0 ? ' is-active' : ''}`}><img className={`reading-folder-chevron${index === 0 ? '' : ' is-collapsed'}`} src="/assets/reading/library-folder.svg" alt="" /><img className="reading-folder-icon" src="/assets/reading/library-folder-shape.svg" alt="" /><OverflowLabel text={folder} /></button>{index === 0 && <div className="reading-folder-docs">{documents.filter((document) => document.favorite).map((document, documentIndex) => <button type="button" aria-label={document.title} className={documentIndex === 0 ? 'is-active' : ''} key={document.id} onClick={() => onOpenDocument(document)}><img src={documentIndex === 0 ? '/assets/reading/notes-active.svg' : '/assets/reading/notes.svg'} alt="" /><OverflowLabel text={document.title} /></button>)}</div>}</div>)}
             </div>
           )}
         </div>
@@ -207,14 +372,14 @@ export function ReadingLibrary({
             {filterOpen && <div className="reading-library-filter-menu" role="menu">{(['全部', '论文', '专利', '报告'] as LibraryFilter[]).map((item) => <button type="button" role="menuitem" className={filter === item ? 'is-active' : ''} key={item} onClick={() => { setFilter(item); setFilterOpen(false) }}>{item}</button>)}</div>}
           </div>
           <div className="reading-library-sort-wrap">
-            <button type="button" className={`reading-library-sort${sortOpen ? ' is-open' : ''}`} onClick={(event) => { event.stopPropagation(); setFilterOpen(false); setPageSizeOpen(false); setSortOpen((open) => !open) }}><span>排序</span><i /><b className="reading-library-sort-value">{sortMode}</b><img className={sortOpen ? 'is-open' : ''} src="/assets/direction-down.svg" alt="" /></button>
-            {sortOpen && <div className="reading-library-sort-menu">{(['最近上传', '最后编辑'] as const).map((mode) => <button type="button" className={sortMode === mode ? 'is-active' : ''} key={mode} onClick={() => { setSortMode(mode); setSortOpen(false) }}>{mode}</button>)}</div>}
+            <button ref={sortTriggerRef} type="button" className={`reading-library-sort${sortOpen ? ' is-open' : ''}`} aria-haspopup="listbox" aria-expanded={sortOpen} aria-controls="reading-library-sort-list" onKeyDown={handleSortTriggerKeyDown} onClick={(event) => { event.stopPropagation(); setFilterOpen(false); setPageSizeOpen(false); if (sortOpen) closeSortMenu(); else setSortOpen(true) }}><span>排序</span><i /><b className="reading-library-sort-value">{sortMode}</b><img className={sortOpen ? 'is-open' : ''} src="/assets/reading/sort-chevron.svg" alt="" /></button>
+            {sortOpen && <div id="reading-library-sort-list" className="reading-library-sort-menu" role="listbox" aria-label="选择排序方式" onKeyDown={handleSortMenuKeyDown}>{(['最近上传', '最后编辑'] as const).map((mode, index) => <button ref={(option) => { sortOptionRefs.current[index] = option }} type="button" role="option" aria-selected={sortMode === mode} className={sortMode === mode ? 'is-active' : ''} key={mode} onClick={() => selectSortMode(mode)}>{mode}</button>)}</div>}
           </div>
         </div>
 
         <div className="reading-library-card-grid">
           {visibleDocuments.map((document, index) => {
-            const meta = documentMeta[document.id] ?? { date: '2026.07.10', tag: '论文' as const }
+            const meta = documentMeta[document.id] ?? { date: '2026.07.10', uploadedAt: '2026-07-10T10:00:00', editedAt: '2026-07-10T10:00:00', tag: '论文' as const }
             return <article className={`reading-library-card${index === 0 ? ' is-selected' : ''}`} key={document.id}>
               <img className="reading-library-file-icon" src={document.type === 'PDF' ? '/assets/reading/pdf.svg' : '/assets/reading/docx.svg'} alt="" />
               <div className="reading-library-card-body">

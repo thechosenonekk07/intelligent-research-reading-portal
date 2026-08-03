@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { initialReadingNotes, readingDocuments, type ReadingDocument } from '../readingData'
 import { Modal } from './Modal'
 import { ReadingLibrary } from './ReadingLibrary'
@@ -20,10 +20,23 @@ export function ReadingWorkspace({ onSwitchToResearch }: ReadingWorkspaceProps) 
   const [uploadFolders, setUploadFolders] = useState(['我的笔记库1', '我的笔记库2', '我的笔记库3', '我的笔记库4'])
   const [uploadNewFolderOpen, setUploadNewFolderOpen] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [toast, setToast] = useState('')
+  const toastTimerRef = useRef<number | null>(null)
 
   const activeDocument = documents.find((document) => document.id === activeDocumentId) ?? documents[0]
 
-  const showToast = (_message: string) => undefined
+  const showToast = (message: string) => {
+    if (toastTimerRef.current != null) window.clearTimeout(toastTimerRef.current)
+    setToast(message)
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast('')
+      toastTimerRef.current = null
+    }, 2200)
+  }
+
+  useEffect(() => () => {
+    if (toastTimerRef.current != null) window.clearTimeout(toastTimerRef.current)
+  }, [])
 
   const toggleFavorite = (id: number) => {
     setDocuments((current) => current.map((document) => document.id === id ? { ...document, favorite: !document.favorite } : document))
@@ -51,9 +64,14 @@ export function ReadingWorkspace({ onSwitchToResearch }: ReadingWorkspaceProps) 
     const form = new FormData(event.currentTarget)
     const name = String(form.get('folderName') ?? '').trim()
     if (!name) return
-    setUploadFolders((current) => [...current, name])
+    if (uploadFolders.some((folder) => folder.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      showToast('文件夹名称已存在')
+      return
+    }
+    setUploadFolders((current) => [name, ...current])
     setUploadFolder(name)
     setUploadNewFolderOpen(false)
+    showToast(`已新建“${name}”`)
   }
 
   return (
@@ -91,6 +109,8 @@ export function ReadingWorkspace({ onSwitchToResearch }: ReadingWorkspaceProps) 
           onBack={() => setView('reader')}
           onUpload={() => { setUploadFolderOpen(false); setIsUploading(false); setView('upload') }}
           onToast={showToast}
+          folders={uploadFolders}
+          onFoldersChange={setUploadFolders}
         />
       ) : (
         <section className="reading-upload-page" aria-label="上传文件">
@@ -110,6 +130,7 @@ export function ReadingWorkspace({ onSwitchToResearch }: ReadingWorkspaceProps) 
       )}
 
       {uploadNewFolderOpen && <Modal title="新建文件夹" onClose={() => setUploadNewFolderOpen(false)} onSubmit={createUploadFolder}><label className="field-label" htmlFor="reading-upload-folder-name"><span className="required-mark">*</span> 文件夹名称：</label><input className="text-field" id="reading-upload-folder-name" name="folderName" autoFocus placeholder="请输入" /></Modal>}
+      {toast && <div className="reading-toast" role="status" aria-live="polite">{toast}</div>}
     </>
   )
 }
