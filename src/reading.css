@@ -3512,8 +3512,13 @@
   text-align: left;
 }
 
-.reading-folder-docs button:hover,
-.reading-folder-docs button.is-active {
+.reading-folder-docs button:hover {
+  color: var(--text-2);
+  background: var(--fill-1, #f7f8fa);
+}
+
+.reading-folder-docs button.is-active,
+.reading-folder-docs button.is-active:hover {
   color: var(--primary);
   background: var(--primary-soft);
 }
@@ -3764,17 +3769,15 @@
 .reading-library-card-title {
   display: block;
   width: 100%;
+  margin: 0;
   overflow: hidden;
+  color: var(--text-1);
   font-size: 16px;
   font-weight: 500;
   line-height: 24px;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.reading-library-card-title:hover {
-  color: var(--primary);
 }
 
 .reading-library-card-meta {

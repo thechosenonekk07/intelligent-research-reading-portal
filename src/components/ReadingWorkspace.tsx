@@ -12,6 +12,7 @@ export function ReadingWorkspace({ onSwitchToResearch }: ReadingWorkspaceProps) 
   const [view, setView] = useState<'reader' | 'library' | 'upload'>('reader')
   const [documents, setDocuments] = useState(readingDocuments)
   const [activeDocumentId, setActiveDocumentId] = useState(1)
+  const [librarySelectedDocumentId, setLibrarySelectedDocumentId] = useState<number | null>(1)
   const [notes, setNotes] = useState(initialReadingNotes)
   const [readerEditingNote, setReaderEditingNote] = useState(false)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
@@ -38,12 +39,18 @@ export function ReadingWorkspace({ onSwitchToResearch }: ReadingWorkspaceProps) 
     if (toastTimerRef.current != null) window.clearTimeout(toastTimerRef.current)
   }, [])
 
+  useEffect(() => {
+    if (librarySelectedDocumentId != null && documents.some((document) => document.id === librarySelectedDocumentId)) return
+    setLibrarySelectedDocumentId(documents[0]?.id ?? null)
+  }, [documents, librarySelectedDocumentId])
+
   const toggleFavorite = (id: number) => {
     setDocuments((current) => current.map((document) => document.id === id ? { ...document, favorite: !document.favorite } : document))
     showToast('收藏状态已更新')
   }
 
   const openDocument = (document: ReadingDocument) => {
+    setLibrarySelectedDocumentId(document.id)
     setActiveDocumentId(document.id)
     setView('reader')
   }
@@ -105,6 +112,8 @@ export function ReadingWorkspace({ onSwitchToResearch }: ReadingWorkspaceProps) 
         <ReadingLibrary
           documents={documents}
           onDocumentsChange={setDocuments}
+          selectedDocumentId={librarySelectedDocumentId}
+          onSelectDocument={setLibrarySelectedDocumentId}
           onOpenDocument={openDocument}
           onBack={() => setView('reader')}
           onUpload={() => { setUploadFolderOpen(false); setIsUploading(false); setView('upload') }}

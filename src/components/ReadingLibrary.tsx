@@ -5,6 +5,8 @@ import type { ReadingDocument } from '../readingData'
 interface ReadingLibraryProps {
   documents: ReadingDocument[]
   onDocumentsChange: (documents: ReadingDocument[]) => void
+  selectedDocumentId: number | null
+  onSelectDocument: (documentId: number) => void
   onOpenDocument: (document: ReadingDocument) => void
   onBack: () => void
   onUpload: () => void
@@ -112,6 +114,8 @@ function OverflowLabel({ text, className = '' }: OverflowLabelProps) {
 export function ReadingLibrary({
   documents,
   onDocumentsChange,
+  selectedDocumentId,
+  onSelectDocument,
   onOpenDocument,
   onBack,
   onUpload,
@@ -298,6 +302,16 @@ export function ReadingLibrary({
 
   const folderDocuments = documents.filter((document) => document.folder === activeFolder).slice(0, 4)
 
+  const selectLibraryDocument = (documentItem: ReadingDocument) => {
+    setFilter('全部')
+    setSearch('')
+    setPage(1)
+    onSelectDocument(documentItem.id)
+    window.requestAnimationFrame(() => {
+      window.document.getElementById(`reading-library-card-${documentItem.id}`)?.scrollIntoView({ block: 'nearest' })
+    })
+  }
+
   const selectSortMode = (mode: '最近上传' | '最后编辑') => {
     setSortMode(mode)
     closeSortMenu(true)
@@ -353,13 +367,19 @@ export function ReadingLibrary({
                       setExpandedFolder((current) => current === folder ? '' : folder)
                     }}
                   ><img className={`reading-folder-chevron${expandedFolder === folder ? '' : ' is-collapsed'}`} src="/assets/reading/library-folder.svg" alt="" /><img className="reading-folder-icon" src="/assets/reading/library-folder-shape.svg" alt="" /><OverflowLabel text={folder} /></button>}
-                  {expandedFolder === folder && <div className="reading-folder-docs">{folderDocuments.map((document, documentIndex) => <button type="button" aria-label={document.title} className={documentIndex === 0 ? 'is-active' : ''} key={document.id} onClick={() => onOpenDocument(document)}><img src={documentIndex === 0 ? '/assets/reading/notes-active.svg' : '/assets/reading/notes.svg'} alt="" /><OverflowLabel text={document.title} /></button>)}</div>}
+                  {expandedFolder === folder && <div className="reading-folder-docs">{folderDocuments.map((document) => {
+                    const selected = document.id === selectedDocumentId
+                    return <button type="button" aria-label={document.title} aria-current={selected ? 'true' : undefined} aria-controls={`reading-library-card-${document.id}`} className={selected ? 'is-active' : ''} key={document.id} onClick={() => selectLibraryDocument(document)}><img src={selected ? '/assets/reading/notes-active.svg' : '/assets/reading/notes.svg'} alt="" /><OverflowLabel text={document.title} /></button>
+                  })}</div>}
                 </div>
               ))}
             </div>
           ) : (
             <div className="reading-folder-tree">
-              {['我的收藏1', '我的收藏2'].map((folder, index) => <div key={folder}><button type="button" aria-label={folder} className={`reading-folder-row${index === 0 ? ' is-active' : ''}`}><img className={`reading-folder-chevron${index === 0 ? '' : ' is-collapsed'}`} src="/assets/reading/library-folder.svg" alt="" /><img className="reading-folder-icon" src="/assets/reading/library-folder-shape.svg" alt="" /><OverflowLabel text={folder} /></button>{index === 0 && <div className="reading-folder-docs">{documents.filter((document) => document.favorite).map((document, documentIndex) => <button type="button" aria-label={document.title} className={documentIndex === 0 ? 'is-active' : ''} key={document.id} onClick={() => onOpenDocument(document)}><img src={documentIndex === 0 ? '/assets/reading/notes-active.svg' : '/assets/reading/notes.svg'} alt="" /><OverflowLabel text={document.title} /></button>)}</div>}</div>)}
+              {['我的收藏1', '我的收藏2'].map((folder, index) => <div key={folder}><button type="button" aria-label={folder} className={`reading-folder-row${index === 0 ? ' is-active' : ''}`}><img className={`reading-folder-chevron${index === 0 ? '' : ' is-collapsed'}`} src="/assets/reading/library-folder.svg" alt="" /><img className="reading-folder-icon" src="/assets/reading/library-folder-shape.svg" alt="" /><OverflowLabel text={folder} /></button>{index === 0 && <div className="reading-folder-docs">{documents.filter((document) => document.favorite).map((document) => {
+                const selected = document.id === selectedDocumentId
+                return <button type="button" aria-label={document.title} aria-current={selected ? 'true' : undefined} aria-controls={`reading-library-card-${document.id}`} className={selected ? 'is-active' : ''} key={document.id} onClick={() => selectLibraryDocument(document)}><img src={selected ? '/assets/reading/notes-active.svg' : '/assets/reading/notes.svg'} alt="" /><OverflowLabel text={document.title} /></button>
+              })}</div>}</div>)}
             </div>
           )}
         </div>
@@ -378,17 +398,18 @@ export function ReadingLibrary({
         </div>
 
         <div className="reading-library-card-grid">
-          {visibleDocuments.map((document, index) => {
+          {visibleDocuments.map((document) => {
             const meta = documentMeta[document.id] ?? { date: '2026.07.10', uploadedAt: '2026-07-10T10:00:00', editedAt: '2026-07-10T10:00:00', tag: '论文' as const }
-            return <article className={`reading-library-card${index === 0 ? ' is-selected' : ''}`} key={document.id}>
+            const selected = document.id === selectedDocumentId
+            return <article id={`reading-library-card-${document.id}`} className={`reading-library-card${selected ? ' is-selected' : ''}`} aria-current={selected ? 'true' : undefined} key={document.id}>
               <img className="reading-library-file-icon" src={document.type === 'PDF' ? '/assets/reading/pdf.svg' : '/assets/reading/docx.svg'} alt="" />
               <div className="reading-library-card-body">
-                <button type="button" className="reading-library-card-title" onClick={() => onOpenDocument(document)}>{document.title}</button>
+                <h3 className="reading-library-card-title">{document.title}</h3>
                 <div className="reading-library-card-meta">
                   <button type="button" className={`reading-library-star${document.favorite ? ' is-active' : ''}`} aria-label={document.favorite ? '取消收藏' : '收藏'} onClick={() => toggleFavorite(document.id)}><img src={document.favorite ? '/assets/reading/star.svg' : '/assets/reading/star-outline.svg'} alt="" /></button>
                   <span className={`reading-library-tag reading-library-tag--${libraryTagClass[meta.tag]}`}>{meta.tag}</span><span>{meta.date}</span><span>{document.size.replace(' ', '')}</span>
                   <span className="reading-library-card-spacer" />
-                  <button type="button" className="reading-library-edit" onClick={() => onOpenDocument(document)}>编辑</button>
+                  <button type="button" className="reading-library-edit" aria-label={`编辑${document.title}`} onClick={() => onOpenDocument(document)}>编辑</button>
                   <div className="reading-library-card-menu-wrap">
                     <button type="button" aria-label={`${document.title}更多操作`} onClick={(event) => { event.stopPropagation(); setMenuDocumentId((current) => current === document.id ? null : document.id) }}><span className="reading-more-dots" aria-hidden="true" /></button>
                     {menuDocumentId === document.id && <div className="reading-library-more-menu" role="menu"><button type="button" role="menuitem" onClick={() => { setMoveDocumentId(document.id); setMoveTarget(document.folder); setMenuDocumentId(null) }}>移动</button><button type="button" role="menuitem" onClick={() => { setMenuDocumentId(null); downloadDocument(document) }}>下载</button><button type="button" role="menuitem" onClick={() => { onDocumentsChange(documents.filter((item) => item.id !== document.id)); setMenuDocumentId(null) }}>删除</button></div>}
